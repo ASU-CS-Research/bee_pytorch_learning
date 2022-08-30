@@ -9,8 +9,6 @@ font = ("Helvetica", 18)
 sg.set_options(font=font, text_element_background_color='white', text_color='black')
 
 
-
-
 """""""""
 ///  LAYOUTS  ///
 """""""""
@@ -51,9 +49,9 @@ layouts[2] = [
     [sg.T('Supervisor Query Selection: '), sg.Listbox(active_learner.supervisor_query_options,
                                                       default_values=active_learner.supervisor_query_options[0],
                                                       key='supervisor_query')],
-    [sg.T('Labelling Query Selection: '), sg.Listbox(active_learner.chosen_query_options,
-                                                     default_values=active_learner.chosen_query_options[0],
-                                                     key='chosen_query')],
+    [sg.T('Labelling Query Selection: '), sg.Listbox(active_learner.labelling_query_options,
+                                                     default_values=active_learner.labelling_query_options[0],
+                                                     key='labelling_query')],
     [sg.T('Training percentage: '), sg.InputText(70, key='training_perc'), sg.T('%')],
     [sg.T('Remaining percent of the data used for testing.')],
     [sg.T('Validation Percentage: '), sg.InputText(20, key='validation_perc'), sg.T('%')],
@@ -97,7 +95,7 @@ while True:
 
         activelearner = active_learner.ActiveLearner(values['unlabeled_dir'], values['output_dir'],
                                                      values['neural_network'][0], values['supervisor_query'][0],
-                                                     values['chosen_query'][0], values['training_perc'],
+                                                     values['labelling_query'][0], values['training_perc'],
                                                      values['validation_perc'])
     if event == sg.WIN_CLOSED or event == 'Close':
         break

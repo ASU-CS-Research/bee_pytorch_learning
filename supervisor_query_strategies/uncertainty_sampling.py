@@ -4,10 +4,10 @@ from torch import no_grad, nn, max
 from torch.utils.data import Dataset
 import os
 
-import supervisor_query_strategy
+import supervisor_query_strategies.supervisor_query_strategy as sqs
 
 
-class UncertaintySampling(supervisor_query_strategy.SupervisorQueryStrategy):\
+class UncertaintySampling(sqs.SupervisorQueryStrategy):
 
     def query_data(self, model: nn, filename_list: List[str], dataset: Dataset, response_size: int = 50) -> List[str]:
         with no_grad():
