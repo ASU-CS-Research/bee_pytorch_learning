@@ -1,4 +1,6 @@
+import os
 from datetime import datetime
+import csv
 
 color_codes = {
     'DEBUG': 'lightsteelblue',
@@ -21,3 +23,13 @@ def log_message(message: str, level: str = 'INFO', window=None):
     log_msg += ' %7s | ' % level
     log_msg += message + '\n'
     logger.insert('end', log_msg, level)
+
+
+def annotate_img(csv_filepath, basename, class_val):
+    if not os.path.exists(csv_filepath):
+        open_or_append = 'w'
+    else:
+        open_or_append = 'a'
+    with open(csv_filepath, open_or_append) as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([basename, class_val])

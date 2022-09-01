@@ -7,6 +7,7 @@ import active_learner
 from log_central import log_message
 
 NUM_EPOCHS = 5
+QUERY_SIZE = 50
 DEFAULT_OUTPUT_DIR = os.path.abspath(f'./output_{datetime.now()}'.replace(' ', '_'))
 
 font = ("Helvetica", 18)
@@ -30,6 +31,8 @@ layouts[0] = [
     [sg.Text('Number of epochs between supervisor query: '), sg.InputText(str(NUM_EPOCHS), key='num_epochs')],
     [sg.Text('Classes to train: '), sg.InputText(key='classes')],
     [sg.Text('Classes should be given in the form \'Class0, Class1, ... ClassN\'')],
+    [sg.Text('Query Size: '), sg.InputText(str(QUERY_SIZE), key='query_size')],
+    [sg.Text('Query Size is the number of images to ask for labels after each training session.')],
     [sg.Button('Train')]
 ]
 
@@ -110,12 +113,11 @@ while True:
             values['output_dir'] = DEFAULT_OUTPUT_DIR
         values['classes'] = values['classes'].split(', ')
 
-        log_message(f'Classes: {classes}, Layout: {layouts[2][1]}', 'WARNING')
         activelearner = active_learner.ActiveLearner(values['unlabeled_dir'], values['output_dir'],
                                                      values['neural_network'][0], values['supervisor_query'][0],
                                                      values['labelling_query'][0], values['training_perc'],
                                                      values['validation_perc'], values['cross_validation'],
-                                                     values['classes'], values['labeled_dir'])
+                                                     values['classes'], values['labeled_dir'], values['query_size'])
     if event == sg.WIN_CLOSED or event == 'Close':
         break
 
