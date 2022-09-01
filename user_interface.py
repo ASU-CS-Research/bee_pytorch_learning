@@ -1,13 +1,19 @@
+from datetime import datetime
+from typing import List
+
 import PySimpleGUI as sg
 import os
 import active_learner
 from log_central import log_message
 
 NUM_EPOCHS = 5
+DEFAULT_OUTPUT_DIR = os.path.abspath(f'./output_{datetime.now()}'.replace(' ', '_'))
 
 font = ("Helvetica", 18)
 sg.set_options(font=font, text_element_background_color='white', text_color='black')
 
+images_to_label: List[str] = []
+classes: List[str] = []
 
 """""""""
 ///  LAYOUTS  ///
@@ -22,7 +28,8 @@ layouts[0] = [
                                                  initial_folder=os.path.abspath('./'),
                                                  key='output_dir')],
     [sg.Text('Number of epochs between supervisor query: '), sg.InputText(str(NUM_EPOCHS), key='num_epochs')],
-    [],
+    [sg.Text('Classes to train: '), sg.InputText(key='classes')],
+    [sg.Text('Classes should be given in the form \'Class0, Class1, ... ClassN\'')],
     [sg.Button('Train')]
 ]
 
@@ -55,15 +62,18 @@ layouts[2] = [
     [sg.T('Training percentage: '), sg.InputText(70, key='training_perc'), sg.T('%')],
     [sg.T('Remaining percent of the data used for testing.')],
     [sg.T('Validation Percentage: '), sg.InputText(20, key='validation_perc'), sg.T('%')],
-    [sg.T('Validation set is taken as a percentage of the training set.')]
+    [sg.T('Validation set is taken as a percentage of the training set.')],
+    [sg.T('Cross Validation'), sg.Checkbox('Enabled', default=True, key='cross_validation')],
+    [sg.T('Pre-Labeled Images Directory: '), sg.FolderBrowse('Select File Location...',
+                                                             initial_folder=os.path.abspath('./'),
+                                                             key='labeled_dir')]
 ]
 
 tab_names = ['Home', 'Output', 'Advanced', 'Testing']
 
-tabs = [sg.Tab(tab_name, layouts[i], title_color='Black', border_width=10, background_color='White',
-               element_justification='Left') for i, tab_name in enumerate(tab_names)]
 
-# Define Layout with Tabs
+tabs = [sg.Tab(tab_name, layouts[i].copy(), title_color='Black', border_width=10, background_color='White',
+               element_justification='Left') for i, tab_name in enumerate(tab_names)]
 tabgrp = [
     [sg.TabGroup([tabs], tab_location='centertop',
                  title_color='Black', tab_background_color='Gray', selected_title_color='Black',
@@ -71,6 +81,7 @@ tabgrp = [
 
 # Define Window
 window = sg.Window("Tabs", tabgrp, size=(1024, 768))
+
 
 while True:
     # Read  values entered by user
@@ -88,15 +99,23 @@ while True:
         except ValueError as e:
             log_message(f'The number of epochs, training percent and validation percent must be integers. {e}', 'ERROR')
             continue
-        if values['unlabeled_dir'] == '' or values['output_dir'] == '':
-            log_message(f'Aborting training. File location of unlabeled images and output directory are required!',
-                        'ERROR')
-            continue
+        if values['unlabeled_dir'] == '':
+            if values['labeled_dir'] == '':
+                log_message(f'No directory location provided for labeled or unlabeled images. With no training data, '
+                            f'we can\'t train, so this training session is aborted.', 'ERROR')
+                continue
+        if values['output_dir'] == '':
+            log_message(f'No directory location provided for output directory. Defaulting to {DEFAULT_OUTPUT_DIR}',
+                        'WARNING')
+            values['output_dir'] = DEFAULT_OUTPUT_DIR
+        values['classes'] = values['classes'].split(', ')
 
+        log_message(f'Classes: {classes}, Layout: {layouts[2][1]}', 'WARNING')
         activelearner = active_learner.ActiveLearner(values['unlabeled_dir'], values['output_dir'],
                                                      values['neural_network'][0], values['supervisor_query'][0],
                                                      values['labelling_query'][0], values['training_perc'],
-                                                     values['validation_perc'])
+                                                     values['validation_perc'], values['cross_validation'],
+                                                     values['classes'], values['labeled_dir'])
     if event == sg.WIN_CLOSED or event == 'Close':
         break
 
