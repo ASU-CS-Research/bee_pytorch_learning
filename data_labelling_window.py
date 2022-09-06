@@ -3,18 +3,18 @@ from typing import List, Optional
 
 import PySimpleGUI as sg
 import cv2
-import csv
+from log_central import log_message
 
 
 class LabelData:
      
-    def __init__(self, opt_list: List[str], img_list: List[str],
+    def __init__(self, class_list: List[str], img_list: List[str],
                  data_location: Optional[str] = os.path.abspath('./data'),
                  unlabeled_imgs_location: Optional[str] = os.path.abspath('./unlabeled')):
         self._data_location = data_location
         self._data_annotations = os.path.join(self._data_location, 'annotations.csv')
-        self._layout = self._create_layout(buttons=opt_list)
-        self._opt_list = opt_list
+        self._layout = self._create_layout(buttons=class_list)
+        self._opt_list = class_list
         self._unlabeled_images_location = unlabeled_imgs_location
         self._img_list = [(os.path.join(self._unlabeled_images_location, file_name),
                            cv2.imread(os.path.join(self._unlabeled_images_location, file_name)))
@@ -25,16 +25,8 @@ class LabelData:
             # `None` label means the user wants to delete the image rather than label it.
             os.remove(filepath)
         else:
-            if not os.path.exists(os.path.join(self._data_location, 'new_training_data')):
-                os.makedirs(os.path.join(self._data_location, 'new_training_data'))
             file_name = os.path.basename(filepath)
-            self._write_to_csv(file_name, label)
-            os.rename(filepath, os.path.join(self._data_location, 'new_training_data', file_name))
-
-    def _write_to_csv(self, file_name, label):
-        with open(self._data_annotations, 'a') as csvfile:
-            csvwriter = csv.writer(csvfile)
-            csvwriter.writerow([file_name, label])
+            os.rename(filepath, os.path.join(self._data_location, label, file_name))
 
     def add_images(self, new_img_list):
         for file_name in new_img_list:
@@ -43,12 +35,12 @@ class LabelData:
 
     def run_gui(self):
         self._layout = self._create_layout(self._opt_list)
-        window = sg.Window('Label the data!', self._layout, finalize=True)
+        window = sg.Window('Label the data!', self._layout, finalize=True, modal=True)
         for (filepath, img) in self._img_list:
-            window['--IMAGE--'].update(filepath)
+            window['current_image'].update(filepath)
             event, values = window.read()
             if event in self._opt_list:
-                self._label_image(filepath, self._opt_list.index(event))
+                self._label_image(filepath, event)
             elif event == 'Delete Image':
                 self._label_image(filepath)
             elif event == sg.WIN_CLOSED:
@@ -58,7 +50,7 @@ class LabelData:
 
     @staticmethod
     def _create_layout(buttons):
-        layout = [[sg.Image(key='--IMAGE--')]]
+        layout = [[sg.Image(key='current_image')]]
         layout += [[sg.Button(name)] for name in buttons]
         layout.append([sg.Button("Delete Image")])
         return layout

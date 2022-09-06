@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from typing import List
 
@@ -5,6 +6,7 @@ import PySimpleGUI as sg
 import os
 import active_learner
 from log_central import log_message
+
 
 NUM_EPOCHS = 5
 QUERY_SIZE = 50
@@ -48,6 +50,7 @@ layouts[1] = [
                   reroute_cprint=True,
                   autoscroll=True,
                   auto_refresh=True,
+                  echo_stdout_stderr=True,
                   key='output_box')]
 ]
 
@@ -117,7 +120,11 @@ while True:
                                                      values['neural_network'][0], values['supervisor_query'][0],
                                                      values['labelling_query'][0], values['training_perc'],
                                                      values['validation_perc'], values['cross_validation'],
-                                                     values['classes'], values['labeled_dir'], values['query_size'])
+                                                     values['classes'], values['labeled_dir'], values['query_size'],
+                                                     values['num_epochs'])
+        window.refresh()
+        time.sleep(3)
+        activelearner.train()
     if event == sg.WIN_CLOSED or event == 'Close':
         break
 

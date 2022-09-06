@@ -9,13 +9,16 @@ color_codes = {
     'ERROR': 'red'
 }
 logger = None
+static_window = None
 
 
 def log_message(message: str, level: str = 'INFO', window=None):
     global logger
+    global static_window
 
     if window is not None:
         logger = window['output_box'].Widget
+        static_window = window
 
     logger.tag_config(level, background='black', foreground=color_codes[level])
     ts = datetime.now()
@@ -23,6 +26,7 @@ def log_message(message: str, level: str = 'INFO', window=None):
     log_msg += ' %7s | ' % level
     log_msg += message + '\n'
     logger.insert('end', log_msg, level)
+    static_window.refresh()
 
 
 def annotate_img(csv_filepath, basename, class_val):
