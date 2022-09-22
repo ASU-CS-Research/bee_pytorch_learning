@@ -1,19 +1,23 @@
 from datetime import datetime
 from typing import List, Optional
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.manifold import TSNE
 from torch.autograd import Variable
 from torch.optim import Adam
 from torchvision.models import alexnet, resnet50
-from log_central import log_message, annotate_img
+from helper_functions import log_message, annotate_img
 import os
 
-from datasplit import DataSplit
 from custom_image_dataset import CustomImageDataset
+from data_labelling_window import DataLabellingWindow
 
 from supervisor_query_strategies.supervisor_query_strategy import SupervisorQueryStrategy
 from supervisor_query_strategies.uncertainty_sampling import UncertaintySampling
+from supervisor_query_strategies.margin_of_confidence import MarginOfConfidence
 
 from labelling_query_strategies.labelling_query_strategy import LabellingQueryStrategy
 from labelling_query_strategies.CAL import CAL
@@ -22,11 +26,12 @@ from labelling_query_strategies.no_labelling import NoLabeling
 import torchvision.transforms as T
 
 neural_net_options = [
-    "resnet50",
-    "alexnet"
+    "alexnet",
+    "resnet50"
 ]
 supervisor_query_options = [
-    "uncertainty_sampling"
+    "uncertainty_sampling",
+    "margin_of_confidence"
 ]
 labelling_query_options = [
     "CAL",
@@ -39,11 +44,15 @@ class ActiveLearner:
     def __init__(self, unlabeled_location: str, output_location: str, neural_net_selection: str,
                  supervisor_query_selection: str, labelling_query_selection: str, training_perc: int,
                  validation_perc: int, cross_validation: bool, classes: List[str], labeled_images_location: str,
-                 query_size, num_epochs: int, batch_size: Optional[int] = 64):
+                 query_size: int, num_epochs: int, batch_size: Optional[int] = 64):
         self._num_epochs = num_epochs
         self._query_size = query_size
         self._batch_size = batch_size
         self._img_size = 224
+
+        self._use_cross_validation = cross_validation
+        self._class_list = classes
+        self._annotation_filename = 'annotations.csv'
 
         self._neural_net_selection = neural_net_selection
         self._supervisor_query_selection = supervisor_query_selection
@@ -64,12 +73,12 @@ class ActiveLearner:
         self._labeled_images_location = labeled_images_location if labeled_images_location is not None \
             else os.path.abspath('./data/labeled')
 
-        self._use_cross_validation = cross_validation
-        self._class_list = classes
-        self._annotation_filename = 'annotations.csv'
-
         self._labeled_images = self._load_labeled_images()
         self._unlabeled_images = self._load_unlabeled_images()
+
+        self._unlabeled_set = torch.utils.data.DataLoader(
+            self._unlabeled_images, batch_size=self._batch_size, shuffle=True
+        )
 
         log_message(f'Built active learner.{" Unlabeled images are in " if unlabeled_location != "" else ""}'
                     f'{os.path.basename(unlabeled_location)}'
@@ -84,6 +93,11 @@ class ActiveLearner:
         log_message('Generating training and testing data...', 'DEBUG')
         self._test_set, self._training_set, self._validation_set = self._generate_test_train_validation()
 
+        # self._features = None
+
+        self._figure = None
+        self._ax = None
+
     def save_model(self, model_name=f'model_{datetime.now()}'):
         # Function to save the model
         if not os.path.exists(self._output_location):
@@ -91,20 +105,31 @@ class ActiveLearner:
         full_path = os.path.join(self._output_location, model_name)
         torch.save(self._neural_network.state_dict(), full_path)
 
-    def _test_accuracy(self, dataset):
+    def _test_accuracy(self, dataset, return_full_results: Optional[bool] = False):
         # Function to test the model with the test dataset and print the accuracy for the test images
         model = self._neural_network
         model.eval()
         accuracy = 0.0
         total = 0.0
+        results = []
+        features = None
+        f_labels = None
 
         with torch.no_grad():
             for data in dataset:
                 images, labels, paths = data
                 images = images.float()
                 # run the model on the test set to predict labels
-                outputs = model(images[:, :3, :, :])
-                # print(tuple(torch.max(outputs.data, 1)))
+                outputs = model(images)
+                current_outputs = outputs.cpu().numpy()
+                #features = np.concatenate((outputs, current_outputs))
+                features = outputs if features is None else np.concatenate((features, outputs))
+                # features = np.concatenate((features, cur_features)) if features is not None else cur_features
+                f_labels = np.concatenate((f_labels, labels)) if f_labels is not None else labels
+
+                soft = nn.functional.softmax(outputs, dim=1)
+                results += (list(zip(list(soft.numpy()), labels.numpy())))
+                # log_message(f'{soft.numpy()}', 'WARNING')
                 # the label with the highest energy will be our prediction
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
@@ -112,7 +137,9 @@ class ActiveLearner:
 
         # compute the accuracy over all test images
         accuracy = (100 * accuracy / total)
-        return accuracy
+        ret = (accuracy, results, (features, f_labels)) if return_full_results else accuracy
+
+        return ret
 
     def train(self):
         """
@@ -136,7 +163,6 @@ class ActiveLearner:
                 # get the inputs
                 images = images.float()
                 images = Variable(images.to(device))
-
                 labels = Variable(labels.to(device))
 
                 # zero the parameter gradients
@@ -144,6 +170,8 @@ class ActiveLearner:
                 # predict classes using images from the training set
                 images = images[:, :3, :, :]
                 outputs = model(images)
+                # current_outputs = outputs.cpu().numpy()
+                # self._features = np.concatenate((outputs, current_outputs))
                 # compute the loss based on model output and real labels
                 loss = self._loss_fn(outputs, labels)
                 # back-propagate the loss
@@ -161,7 +189,7 @@ class ActiveLearner:
                     running_loss = 0.0
             # Compute and print the average accuracy fo this epoch when tested over all 10000 test images
             accuracy = self._test_accuracy(self._validation_set)
-            log_message(f'For epoch {epoch + 1} the accuracy over the whole validation set is {accuracy}%', 'INFO')
+            log_message(f'For epoch {epoch + 1} the accuracy over the whole validation set is {accuracy: .3f}%', 'INFO')
 
             # we want to save the model if the accuracy is the best
             if accuracy > best_accuracy:
@@ -170,17 +198,37 @@ class ActiveLearner:
 
         log_message('Finished training!')
         accuracy = self._test_accuracy(self._test_set)
-        log_message(f'Accuracy over the whole testing set is {accuracy}', 'INFO')
+        log_message(f'Accuracy over the whole testing set is {accuracy: .3f}%', 'INFO')
         log_message(f'Model with best validation accuracy has been saved in {os.path.basename(self._output_location)}.')
 
-    def _supervisor_query(self):
+    def supervisor_query(self):
         """
         Queries the user or 'supervisor' for labels on a number of images equal to `self._query_size`. After getting
         every label, it places the images in the corresponding directories and regenerates the training data.
         """
-
+        # Check to be sure there are some images to label...
+        if not os.path.exists(self._unlabeled_images_location) or \
+                len(os.listdir(self._unlabeled_images_location)) == 0:
+            log_message("No unlabeled images to label!", 'INFO')
+        # Load the unlabeled images (needs to run each time this is called, as this method removes unlabeled images.)
+        self._unlabeled_images = self._load_unlabeled_images()
+        self._unlabeled_set = torch.utils.data.DataLoader(
+            self._unlabeled_images, batch_size=self._batch_size, shuffle=True
+        )
+        # Use the desired supervisor query strategy to find the `n` most useful images to label...
+        images = self._supervisor_query_strategy.query_data(self._neural_network, self._unlabeled_set,
+                                                            self._query_size)
+        # Create the pop-up gui for labelling the images, moving them into the correct location.
+        labelling_window = DataLabellingWindow(self._class_list, images, self._labeled_images_location,
+                                               self._unlabeled_images_location)
+        labelling_window.run_gui()
+        # Reload labeled images dataset with newly labeled images
         self._labeled_images = self._load_labeled_images()
-        pass
+        # Reload unlabeled images now that some have been removed...
+        self._unlabeled_images = self._load_unlabeled_images()
+        self._unlabeled_set = torch.utils.data.DataLoader(
+            self._unlabeled_images, batch_size=self._batch_size, shuffle=True
+        )
 
     def _labelling_query(self):
         pass
@@ -188,17 +236,33 @@ class ActiveLearner:
     def _generate_test_train_validation(self):
         if self._labeled_images is None:
             log_message(f'No labeled images found. Querying {self._query_size} random images for you to label...')
-            self._supervisor_query()
-        ds = DataSplit(self._labeled_images, train_test_split=self._training_perc / 100,
-                       val_train_split=self._validation_perc / 100)
-        training_set, validation_set, test_set = ds.get_split(batch_size=self._batch_size)
+            self.supervisor_query()
+        total_count = int(len(self._labeled_images))
+        train_count = int(total_count * (self._training_perc / 100))
+        test_count = total_count - train_count
+        valid_count = int(train_count * (self._validation_perc / 100))
+        train_count -= valid_count
+        training_set, validation_set, test_set = torch.utils.data.random_split(
+            self._labeled_images, (train_count, valid_count, test_count)
+        )
+
         log_message('Split labeled data into testing, training and validation...', 'DEBUG')
         log_message(f'{"Not u" if self._use_cross_validation is False else "U"}sing cross validation to generate the '
                     f'validation set.', 'DEBUG')
         if self._use_cross_validation:
             log_message('Cross validation has not been implemented yet.', 'WARNING')
 
-        return test_set, training_set, validation_set
+        train_dataset_loader = torch.utils.data.DataLoader(
+            training_set, batch_size=self._batch_size, shuffle=True
+        )
+        test_dataset_loader = torch.utils.data.DataLoader(
+            test_set, batch_size=self._batch_size, shuffle=False
+        )
+        validation_dataset_loader = torch.utils.data.DataLoader(
+            validation_set, batch_size=self._batch_size, shuffle=True
+        )
+
+        return test_dataset_loader, train_dataset_loader, validation_dataset_loader
 
     def _load_labeled_images(self) -> CustomImageDataset:
         labeled_images = None
@@ -235,17 +299,22 @@ class ActiveLearner:
 
         return unlabeled_images
 
-    @staticmethod
-    def _build_nn(neural_net_selection: str) -> nn:
+    def _build_nn(self, neural_net_selection: str) -> nn:
         neuralnet: nn
         if neural_net_selection == 'alexnet':
-            neuralnet = alexnet(pretrained=False)
+            neuralnet = alexnet(pretrained=True)
+            layer = neuralnet.classifier
         elif neural_net_selection == 'resnet50':
-            neuralnet = resnet50(pretrained=False)
+            neuralnet = resnet50(pretrained=True)
+            layer = neuralnet.fc
         else:
             log_message(f'Sorry, the given neural network, \"{neural_net_selection}\", has not been implemented.',
                         'ERROR')
             raise ValueError()
+        if type(layer) == nn.modules.container.Sequential:
+            neuralnet.classifier[-1] = nn.Linear(in_features=layer[-1].in_features, out_features=len(self._class_list))
+        else:
+            neuralnet.classifier = nn.Linear(in_features=layer.in_features, out_features=len(self._class_list))
         return neuralnet
 
     @staticmethod
@@ -253,6 +322,8 @@ class ActiveLearner:
         supervisor_query_strategy: SupervisorQueryStrategy
         if supervisor_query_selection == "uncertainty_sampling":
             supervisor_query_strategy = UncertaintySampling()
+        elif supervisor_query_selection == "margin_of_confidence":
+            supervisor_query_strategy = MarginOfConfidence()
         else:
             log_message(f'Sorry, the given supervisor query strategy, \"{supervisor_query_selection}\", '
                         f'has not been implemented.',
@@ -273,3 +344,69 @@ class ActiveLearner:
                         'ERROR')
             raise ValueError()
         return labelling_query_strategy
+
+    @staticmethod
+    def _scale_to_01_range(x):
+        value_range = (np.max(x) - np.min(x))
+        starts_from_zero = x - np.min(x)
+        return starts_from_zero / value_range
+
+    def get_figure(self) -> plt.Figure:
+        if self._figure is None:
+            figure, ax = plt.subplots(figsize=(10, 10), dpi=100)
+            self._figure = figure
+            self._ax = ax
+        self._ax.cla()
+        self._ax.set_xlabel(f'Probability {self._class_list[1]}')
+        self._ax.set_ylabel(f'Probability {self._class_list[0]}')
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+        accuracy, results, _ = self._test_accuracy(self._test_set, True)
+        points, labels = zip(*results)
+        x, y = zip(*points)
+        self._ax.grid()
+        for class_ind in np.unique(labels):
+            i = np.where(labels == class_ind)
+            self._ax.scatter(np.asarray(x)[i], np.asarray(y)[i], label=self._class_list[class_ind], alpha=0.7)
+
+        accuracy, results = self._test_accuracy(self._unlabeled_set, True)
+        points, labels = zip(*results)
+        x, y = zip(*points)
+        self._ax.scatter(x, y, label='Unlabeled', alpha=0.4)
+        self._ax.legend()
+        self._figure.canvas.draw()
+        # plt.legend()
+        return self._figure
+
+    def get_tsne(self) -> plt.Figure:
+        if self._figure is None:
+            figure, ax = plt.subplots(figsize=(10, 10), dpi=100)
+            self._figure = figure
+            self._ax = ax
+        self._ax.cla()
+        t_accuracy, t_results, (t_features, tf_labels) = self._test_accuracy(self._test_set, True)
+        u_accuracy, u_results, (u_features, uf_labels) = self._test_accuracy(self._unlabeled_set, True)
+        features = np.concatenate((t_features, u_features))
+
+        tsne = TSNE(n_components=2, init='pca', learning_rate='auto').fit_transform(features)
+        tx = tsne[:, 0]
+        ty = tsne[:, 1]
+
+        labels = np.concatenate((tf_labels, uf_labels))
+        tx = self._scale_to_01_range(tx)
+        ty = self._scale_to_01_range(ty)
+
+        indices = np.where(labels == -1)
+        self._ax.scatter(tx[indices], ty[indices], label='unlabeled', alpha=0.6)
+        for class_ind, class_name in enumerate(self._class_list):
+            indices = [i for i, la in enumerate(labels) if la == class_ind]
+            cur_tx = np.take(tx, indices)
+            cur_ty = np.take(ty, indices)
+            self._ax.scatter(cur_tx, cur_ty, label=class_name)
+
+        self._ax.legend()
+        self._figure.canvas.draw()
+        return self._figure
+
+    def update_query_size(self, query_size):
+        self._query_size = query_size

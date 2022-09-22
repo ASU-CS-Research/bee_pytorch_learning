@@ -3,16 +3,15 @@ from typing import List, Optional
 
 import PySimpleGUI as sg
 import cv2
-from log_central import log_message
+from helper_functions import log_message
 
 
-class LabelData:
+class DataLabellingWindow:
      
     def __init__(self, class_list: List[str], img_list: List[str],
                  data_location: Optional[str] = os.path.abspath('./data'),
                  unlabeled_imgs_location: Optional[str] = os.path.abspath('./unlabeled')):
         self._data_location = data_location
-        self._data_annotations = os.path.join(self._data_location, 'annotations.csv')
         self._layout = self._create_layout(buttons=class_list)
         self._opt_list = class_list
         self._unlabeled_images_location = unlabeled_imgs_location
@@ -40,8 +39,10 @@ class LabelData:
             window['current_image'].update(filepath)
             event, values = window.read()
             if event in self._opt_list:
+                log_message(f'Labelling {os.path.basename(filepath)} as {event}')
                 self._label_image(filepath, event)
             elif event == 'Delete Image':
+                log_message(f'Deleting {os.path.basename(filepath)}.')
                 self._label_image(filepath)
             elif event == sg.WIN_CLOSED:
                 break

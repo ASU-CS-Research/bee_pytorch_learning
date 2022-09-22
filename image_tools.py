@@ -71,7 +71,7 @@ class ImageTools:
                 ellipse = cv2.fitEllipse(contour)
                 found_bees.append(ImageTools.create_bee(img, contour, i))
                 i += 1
-                img = cv2.ellipse(img, ellipse, color=(0, 0, 255), thickness=1)
+                # img = cv2.ellipse(img, ellipse, color=(0, 0, 255), thickness=1)
         if show_img:
             cv2.imshow('frame', img)
         return found_bees, i
@@ -85,7 +85,7 @@ class ImageTools:
         return mask
 
     @staticmethod
-    def create_bee(img: np.ndarray, contour: np.ndarray, i: int) -> Tuple[np.ndarray, np.ndarray, int]:
+    def create_bee(img: np.ndarray, contour: np.ndarray, i: int) -> Tuple[np.ndarray, int]:
         """
 
         Args:
@@ -109,10 +109,10 @@ class ImageTools:
             angle += 90
 
         img = img[ry: ry + rh, rx: rx + rw]
-        img = imutils.rotate_bound(img, -1 * angle)
-        bee_part_0 = img[0: img.shape[1], 0:int(img.shape[0] / 2)]
-        bee_part_1 = img[0: img.shape[1], int(img.shape[0] / 2):img.shape[0]]
-        return bee_part_0, bee_part_1, i
+        # img = imutils.rotate_bound(img, -1 * angle)
+        # bee_part_0 = img[0: img.shape[1], 0:int(img.shape[0] / 2)]
+        # bee_part_1 = img[0: img.shape[1], int(img.shape[0] / 2):img.shape[0]]
+        return img, i
 
     @staticmethod
     def color_equals(color1: Tuple[int, int, int] | List[float], color2: Tuple[int, int, int] | List[float],

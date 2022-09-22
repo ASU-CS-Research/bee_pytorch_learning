@@ -4,13 +4,17 @@ from typing import List
 
 import PySimpleGUI as sg
 import os
-import active_learner
-from log_central import log_message
 
+import numpy as np
+from matplotlib import pyplot as plt
+
+import active_learner
+from helper_functions import log_message, draw_figure
 
 NUM_EPOCHS = 5
 QUERY_SIZE = 50
-DEFAULT_OUTPUT_DIR = os.path.abspath(f'./output_{datetime.now()}'.replace(' ', '_'))
+BATCH_SIZE = 64
+DEFAULT_OUTPUT_DIR = os.path.abspath(f'./outputs/output_{datetime.now()}'.replace(' ', '_'))
 
 font = ("Helvetica", 18)
 sg.set_options(font=font, text_element_background_color='white', text_color='black')
@@ -24,6 +28,9 @@ classes: List[str] = []
 layouts = [[] for _ in range(10)]
 
 layouts[0] = [
+    [sg.T('Labeled Images Directory: '), sg.FolderBrowse('Select File Location...',
+                                                         initial_folder=os.path.abspath('./'),
+                                                         key='labeled_dir')],
     [sg.Text('Unlabeled Images Directory: '), sg.FolderBrowse('Select File Location...',
                                                               initial_folder=os.path.abspath('./'),
                                                               key='unlabeled_dir')],
@@ -35,14 +42,17 @@ layouts[0] = [
     [sg.Text('Classes should be given in the form \'Class0, Class1, ... ClassN\'')],
     [sg.Text('Query Size: '), sg.InputText(str(QUERY_SIZE), key='query_size')],
     [sg.Text('Query Size is the number of images to ask for labels after each training session.')],
-    [sg.Button('Train')]
+    [sg.Button('Train', key='train')]
 ]
 
 layouts[1] = [
-    [sg.Text('This is where all the logging output is recorded. If you would like to store this logging information'
+    [sg.Text('This is where all the logging output is recorded. If you would like to store this logging information '
              'somewhere, click here: ')],
-    [sg.Button('Create Logging file', key='log_file')],
-    [sg.Multiline(size=(100, 300),
+    [sg.Button('Create Logging file', key='log_file'), sg.Button('Retrain Model', key='retrain'),
+     sg.Button('Supervisor Query', key='supervisor_query_button'),
+     sg.Button('Labelling Query', key='labelling_query_button'),
+     sg.Button('Create Graph', key='create_graph')],
+    [sg.Multiline(size=(100, 30),
                   background_color='black',
                   text_color='white',
                   # reroute_stdout=True,
@@ -65,17 +75,20 @@ layouts[2] = [
     [sg.T('Labelling Query Selection: '), sg.Listbox(active_learner.labelling_query_options,
                                                      default_values=active_learner.labelling_query_options[0],
                                                      key='labelling_query')],
+    [sg.T('Batch Size: '), sg.InputText(str(BATCH_SIZE), key='batch_size')],
     [sg.T('Training percentage: '), sg.InputText(70, key='training_perc'), sg.T('%')],
     [sg.T('Remaining percent of the data used for testing.')],
     [sg.T('Validation Percentage: '), sg.InputText(20, key='validation_perc'), sg.T('%')],
     [sg.T('Validation set is taken as a percentage of the training set.')],
-    [sg.T('Cross Validation'), sg.Checkbox('Enabled', default=True, key='cross_validation')],
-    [sg.T('Pre-Labeled Images Directory: '), sg.FolderBrowse('Select File Location...',
-                                                             initial_folder=os.path.abspath('./'),
-                                                             key='labeled_dir')]
+    [sg.T('Cross Validation'), sg.Checkbox('Enabled', default=True, key='cross_validation')]
 ]
 
-tab_names = ['Home', 'Output', 'Advanced', 'Testing']
+layouts[3] = [
+    [sg.T('Plot Test')],
+    [sg.Canvas(key='plt_canvas')]
+]
+
+tab_names = ['Home', 'Output', 'Advanced', 'Plotting']
 
 
 tabs = [sg.Tab(tab_name, layouts[i].copy(), title_color='Black', border_width=10, background_color='White',
@@ -88,6 +101,7 @@ tabgrp = [
 # Define Window
 window = sg.Window("Tabs", tabgrp, size=(1024, 768))
 
+activelearner = None
 
 while True:
     # Read  values entered by user
@@ -95,36 +109,53 @@ while True:
 
     if not event == sg.TIMEOUT_EVENT and event is not None:
         log_message(f'event: {event}', 'DEBUG', window)
+        draw_figure(canvas=window['plt_canvas'].TKCanvas)
 
-    if event == 'Train':
+    if event == 'train' or event == 'retrain':
         window['Output'].select()
-        try:
-            values['num_epochs'] = int(values['num_epochs'])
-            values['validation_perc'] = int(values['validation_perc'])
-            values['training_perc'] = int(values['training_perc'])
-        except ValueError as e:
-            log_message(f'The number of epochs, training percent and validation percent must be integers. {e}', 'ERROR')
-            continue
-        if values['unlabeled_dir'] == '':
-            if values['labeled_dir'] == '':
-                log_message(f'No directory location provided for labeled or unlabeled images. With no training data, '
-                            f'we can\'t train, so this training session is aborted.', 'ERROR')
+        if activelearner is None:
+            try:
+                values['num_epochs'] = int(values['num_epochs'])
+                values['batch_size'] = int(values['batch_size'])
+                values['validation_perc'] = int(values['validation_perc'])
+                values['training_perc'] = int(values['training_perc'])
+                values['query_size'] = int(values['query_size'])
+            except ValueError as e:
+                log_message(f'The number of epochs, training percent and validation percent, the query size, and the '
+                            f'batch size must all be integers. {e}', 'ERROR')
                 continue
-        if values['output_dir'] == '':
-            log_message(f'No directory location provided for output directory. Defaulting to {DEFAULT_OUTPUT_DIR}',
-                        'WARNING')
-            values['output_dir'] = DEFAULT_OUTPUT_DIR
-        values['classes'] = values['classes'].split(', ')
+            if values['unlabeled_dir'] == '':
+                if values['labeled_dir'] == '':
+                    log_message(f'No directory location provided for labeled or unlabeled images. With no training '
+                                f'data, we can\'t train, so this training session is aborted.', 'ERROR')
+                    continue
+            if values['output_dir'] == '':
+                log_message(f'No directory location provided for output directory. Defaulting to {DEFAULT_OUTPUT_DIR}',
+                            'WARNING')
+                values['output_dir'] = DEFAULT_OUTPUT_DIR
+            values['classes'] = values['classes'].split(', ')
 
-        activelearner = active_learner.ActiveLearner(values['unlabeled_dir'], values['output_dir'],
-                                                     values['neural_network'][0], values['supervisor_query'][0],
-                                                     values['labelling_query'][0], values['training_perc'],
-                                                     values['validation_perc'], values['cross_validation'],
-                                                     values['classes'], values['labeled_dir'], values['query_size'],
-                                                     values['num_epochs'])
-        window.refresh()
-        time.sleep(3)
+            activelearner = active_learner.ActiveLearner(values['unlabeled_dir'], values['output_dir'],
+                                                         values['neural_network'][0], values['supervisor_query'][0],
+                                                         values['labelling_query'][0], values['training_perc'],
+                                                         values['validation_perc'], values['cross_validation'],
+                                                         values['classes'], values['labeled_dir'], values['query_size'],
+                                                         values['num_epochs'], values['batch_size'])
         activelearner.train()
+    if event == 'supervisor_query_button':
+        if activelearner is not None:
+            activelearner.update_query_size(values['query_size'])
+            activelearner.supervisor_query()
+        else:
+            # For right now... but later implement something here that allows the user to get some random images and
+            # then train a model on those and continue execution.
+            log_message('A model needs to be built for the active learner to find images in the region of disagreement,'
+                        ' so aborting supervisor query.', 'ERROR')
+    if event == 'create_graph':
+        if activelearner is not None:
+            # fig = activelearner.get_figure()
+            fig = activelearner.get_tsne()
+            draw_figure(figure=fig)
     if event == sg.WIN_CLOSED or event == 'Close':
         break
 

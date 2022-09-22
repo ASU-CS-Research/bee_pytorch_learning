@@ -8,7 +8,7 @@ class CustomImageDataset(Dataset):
     """
     An image dataset for use by pytorch. Must specify a directory for a given set of images as well as an annotations
     file consisting of
-    ```<filename>,<class name>```
+    ```<filename>,<class idx>```
     for every image file in the directory and its associated class.
     """
     def __init__(self, annotations_file, img_dir, transform=None, target_transform=None):
@@ -22,7 +22,7 @@ class CustomImageDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-        image = read_image(img_path)
+        image = read_image(img_path)[:3, :, :]
         label = self.img_labels.iloc[idx, 1]
         if self.transform:
             image = self.transform(image)
