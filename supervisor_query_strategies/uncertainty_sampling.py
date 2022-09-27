@@ -1,25 +1,30 @@
 from typing import List
 
-from torch import no_grad, nn, max
-from torch.utils.data import Dataset
-import os
+import numpy as np
 
 import supervisor_query_strategies.supervisor_query_strategy as sqs
 
 
 class UncertaintySampling(sqs.SupervisorQueryStrategy):
 
-    def query_data(self, model: nn, dataset: Dataset, response_size: int = 50) -> List[str]:
-        with no_grad():
-            conf_path = []
-            for data in dataset:
-                images, labels, paths = data
-                images = images.float()
-                # run the model on the test set to predict labels
-                outputs = model(images)
-                out = tuple(max(outputs.data, 1))
-                conf_path.append((out[0].numpy()[0], paths[0], out[1].numpy()[0]))
-            conf_path.sort(key=lambda a: a[0])
-            # for j in range(len(conf_path) - 1, len(conf_path) - 11, -1):
-            #     print(conf_path[j])
-            return [os.path.abspath(item[1]) for item in conf_path]
+    def query_data(self, results) -> List[int]:
+        """
+        Use the margin between the two top classes' probability and sort the results on this margin. The smallest margin
+        is the most questionable data to the model, and the largest margin is the most certain.
+
+        Args:
+            results: results as ordered by the :mod:`ActiveLearner` method :meth:`ActiveLearner._test_accuracy`
+        Returns:
+            List[int]: List of integer indexes of the results, ordered based on the above description from most
+              questionable to least questionable (smallest margin to largest margin).
+        """
+        # Since these are all unlabeled, the labels are irrelevant
+        probabilities, labels = zip(*results)
+        margins_and_indices = []
+        for i, model_out in enumerate(probabilities):
+            sorted_lst = np.argsort(model_out)
+            margin = sorted_lst[-1] - sorted_lst[-2]
+            margins_and_indices.append((i, margin))
+        margins_and_indices = sorted(margins_and_indices, key=lambda entry: entry[1])
+        margins, indices = zip(*margins_and_indices)
+        return indices

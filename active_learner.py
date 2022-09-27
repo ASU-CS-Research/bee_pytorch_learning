@@ -17,7 +17,6 @@ from data_labelling_window import DataLabellingWindow
 
 from supervisor_query_strategies.supervisor_query_strategy import SupervisorQueryStrategy
 from supervisor_query_strategies.uncertainty_sampling import UncertaintySampling
-from supervisor_query_strategies.margin_of_confidence import MarginOfConfidence
 
 from labelling_query_strategies.labelling_query_strategy import LabellingQueryStrategy
 from labelling_query_strategies.CAL import CAL
@@ -30,8 +29,7 @@ neural_net_options = [
     "resnet50"
 ]
 supervisor_query_options = [
-    "uncertainty_sampling",
-    "margin_of_confidence"
+    "uncertainty_sampling"
 ]
 labelling_query_options = [
     "CAL",
@@ -93,7 +91,7 @@ class ActiveLearner:
         log_message('Generating training and testing data...', 'DEBUG')
         self._test_set, self._training_set, self._validation_set = self._generate_test_train_validation()
 
-        # self._features = None
+        self._evaluated_unlabeled = None
 
         self._figure = None
         self._ax = None
@@ -112,6 +110,7 @@ class ActiveLearner:
         accuracy = 0.0
         total = 0.0
         results = []
+        saved_image_paths = []
         features = None
         f_labels = None
 
@@ -119,10 +118,10 @@ class ActiveLearner:
             for data in dataset:
                 images, labels, paths = data
                 images = images.float()
+                saved_image_paths += list(paths)
                 # run the model on the test set to predict labels
                 outputs = model(images)
-                current_outputs = outputs.cpu().numpy()
-                #features = np.concatenate((outputs, current_outputs))
+                # current_outputs = outputs.cpu().numpy()
                 features = outputs if features is None else np.concatenate((features, outputs))
                 # features = np.concatenate((features, cur_features)) if features is not None else cur_features
                 f_labels = np.concatenate((f_labels, labels)) if f_labels is not None else labels
@@ -137,7 +136,7 @@ class ActiveLearner:
 
         # compute the accuracy over all test images
         accuracy = (100 * accuracy / total)
-        ret = (accuracy, results, (features, f_labels)) if return_full_results else accuracy
+        ret = (accuracy, results, (features, f_labels, saved_image_paths)) if return_full_results else accuracy
 
         return ret
 
@@ -146,6 +145,7 @@ class ActiveLearner:
         Training function. We simply have to loop over our data iterator and feed the inputs to the network and
         optimize.
         """
+        self._evaluated_unlabeled = None
         log_message(f'Starting training over dataset in {self._num_epochs} epochs!')
         model = self._neural_network
         best_accuracy = 0.0
@@ -215,9 +215,16 @@ class ActiveLearner:
         self._unlabeled_set = torch.utils.data.DataLoader(
             self._unlabeled_images, batch_size=self._batch_size, shuffle=True
         )
+        # Get the results if they haven't already been found...
+        accuracy, results, (features, f_labels, saved_image_paths) = self._test_accuracy(self._test_set, True) if \
+            self._evaluated_unlabeled is None else self._evaluated_unlabeled
+        # Make sure the _evaluated_unlabeled field is updated...
+        self._evaluated_unlabeled = (accuracy, results, (features, f_labels, saved_image_paths))
+
         # Use the desired supervisor query strategy to find the `n` most useful images to label...
-        images = self._supervisor_query_strategy.query_data(self._neural_network, self._unlabeled_set,
-                                                            self._query_size)
+        indices = self._supervisor_query_strategy.query_data(results=results)
+        images = [saved_image_paths[i] for i in indices]
+
         # Create the pop-up gui for labelling the images, moving them into the correct location.
         labelling_window = DataLabellingWindow(self._class_list, images, self._labeled_images_location,
                                                self._unlabeled_images_location)
@@ -322,8 +329,6 @@ class ActiveLearner:
         supervisor_query_strategy: SupervisorQueryStrategy
         if supervisor_query_selection == "uncertainty_sampling":
             supervisor_query_strategy = UncertaintySampling()
-        elif supervisor_query_selection == "margin_of_confidence":
-            supervisor_query_strategy = MarginOfConfidence()
         else:
             log_message(f'Sorry, the given supervisor query strategy, \"{supervisor_query_selection}\", '
                         f'has not been implemented.',
@@ -361,7 +366,11 @@ class ActiveLearner:
         self._ax.set_ylabel(f'Probability {self._class_list[0]}')
         plt.xlim(0, 1)
         plt.ylim(0, 1)
-        accuracy, results, _ = self._test_accuracy(self._test_set, True)
+        # Check if all of this has already been calculated since last training.
+        accuracy, results, (features, f_labels, saved_image_paths) = self._test_accuracy(self._test_set, True) if \
+            self._evaluated_unlabeled is None else self._evaluated_unlabeled
+        # Make sure the _evaluated_unlabeled field is updated...
+        self._evaluated_unlabeled = (accuracy, results, (features, f_labels, saved_image_paths))
         points, labels = zip(*results)
         x, y = zip(*points)
         self._ax.grid()
@@ -384,8 +393,11 @@ class ActiveLearner:
             self._figure = figure
             self._ax = ax
         self._ax.cla()
-        t_accuracy, t_results, (t_features, tf_labels) = self._test_accuracy(self._test_set, True)
-        u_accuracy, u_results, (u_features, uf_labels) = self._test_accuracy(self._unlabeled_set, True)
+        t_accuracy, t_results, (t_features, tf_labels, saved_image_paths) = self._test_accuracy(self._test_set, True)
+        u_accuracy, u_results, (u_features, uf_labels, saved_image_paths) = self._test_accuracy(self._unlabeled_set, True) \
+            if self._evaluated_unlabeled is None else self._evaluated_unlabeled
+        # Make sure the _evaluated_unlabeled field is updated...
+        self._evaluated_unlabeled = (u_accuracy, u_results, (u_features, uf_labels, saved_image_paths))
         features = np.concatenate((t_features, u_features))
 
         tsne = TSNE(n_components=2, init='pca', learning_rate='auto').fit_transform(features)
