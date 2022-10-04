@@ -14,6 +14,7 @@ import os
 
 from custom_image_dataset import CustomImageDataset
 from data_labelling_window import DataLabellingWindow
+from examine_images_popup import ExamineImagesPopup
 
 from supervisor_query_strategies.supervisor_query_strategy import SupervisorQueryStrategy
 
@@ -75,7 +76,7 @@ class ActiveLearner:
 
         self._supervisor_query_idx = 0
 
-    def save_model(self, model_name=f'model_{datetime.now()}'):
+    def save_model(self, model_name=f'model_{datetime.now().strftime("%H-%M-%S")}'):
         # Function to save the model
         if not os.path.exists(self._output_location):
             os.makedirs(self._output_location)
@@ -97,16 +98,21 @@ class ActiveLearner:
             for data in dataset:
                 images, labels, paths = data
                 images = images.float()
+
+                device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+                images = Variable(images.to(device))
+                labels = Variable(labels.to(device))
+
                 saved_image_paths += list(paths)
                 # run the model on the test set to predict labels
                 outputs = model(images)
                 # current_outputs = outputs.cpu().numpy()
-                features = outputs if features is None else np.concatenate((features, outputs))
+                features = outputs.cpu() if features is None else np.concatenate((features, outputs.cpu()))
                 # features = np.concatenate((features, cur_features)) if features is not None else cur_features
-                f_labels = np.concatenate((f_labels, labels)) if f_labels is not None else labels
+                f_labels = np.concatenate((f_labels, labels.cpu())) if f_labels is not None else labels.cpu()
 
                 soft = nn.functional.softmax(outputs, dim=1)
-                results += (list(zip(list(soft.numpy()), labels.numpy())))
+                results += (list(zip(list(soft.cpu().numpy()), labels.cpu().numpy())))
                 # log_message(f'{soft.numpy()}', 'WARNING')
                 # the label with the highest energy will be our prediction
                 _, predicted = torch.max(outputs.data, 1)
@@ -232,8 +238,10 @@ class ActiveLearner:
         image_paths.reverse()
         # Remove all the images that we aren't confident enough about...
         image_paths = image_paths[:math.floor(len(image_paths) * query_size_perc)]
-
-        pass
+        popup = ExamineImagesPopup(self._class_list, image_paths, self._output_location,
+                                   self._unlabeled_images_location, self._neural_network,
+                                   T.Resize((self._img_size, self._img_size)))
+        popup.run_gui()
 
     def _generate_test_train_validation(self):
         if self._labeled_images is None:

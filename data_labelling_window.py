@@ -8,16 +8,16 @@ from helper_functions import log_message
 
 class DataLabellingWindow:
      
-    def __init__(self, class_list: List[str], img_list: List[str],
+    def __init__(self, class_list: List[str], img_filenames: List[str],
                  data_location: Optional[str] = os.path.abspath('./data'),
                  unlabeled_imgs_location: Optional[str] = os.path.abspath('./unlabeled')):
         self._data_location = data_location
         self._layout = self._create_layout(buttons=class_list)
         self._opt_list = class_list
-        self._unlabeled_images_location = unlabeled_imgs_location
-        self._img_list = [(os.path.join(self._unlabeled_images_location, file_name),
-                           cv2.imread(os.path.join(self._unlabeled_images_location, file_name)))
-                          for file_name in img_list]
+        self._unlabeled_imgs_location = unlabeled_imgs_location
+        self._img_list = [(os.path.join(self._unlabeled_imgs_location, file_name),
+                           cv2.imread(os.path.join(self._unlabeled_imgs_location, file_name)))
+                          for file_name in img_filenames]
 
     def _label_image(self, filepath: str, label: Optional[str] = None):
         if label is None:
@@ -29,8 +29,8 @@ class DataLabellingWindow:
 
     def add_images(self, new_img_list):
         for file_name in new_img_list:
-            self._img_list.append((os.path.join(self._unlabeled_images_location, file_name),
-                                   cv2.imread(os.path.join(self._unlabeled_images_location, file_name))))
+            self._img_list.append((os.path.join(self._unlabeled_imgs_location, file_name),
+                                   cv2.imread(os.path.join(self._unlabeled_imgs_location, file_name))))
 
     def run_gui(self):
         self._layout = self._create_layout(self._opt_list)

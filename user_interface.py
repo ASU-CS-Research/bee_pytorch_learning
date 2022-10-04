@@ -4,14 +4,13 @@ from typing import List
 import PySimpleGUI as sg
 import os
 
-import active_learner
 import active_learner_intermediary
 from helper_functions import log_message, draw_figure
 
 NUM_EPOCHS = 5
 QUERY_SIZE = 50
 BATCH_SIZE = 64
-DEFAULT_OUTPUT_DIR = os.path.abspath(f'./outputs/output_{datetime.now()}'.replace(' ', '_'))
+DEFAULT_OUTPUT_DIR = os.path.abspath(f'./outputs/output_{datetime.now().strftime("%Y-%m-%d")}')
 
 font = ("Helvetica", 18)
 sg.set_options(font=font, text_element_background_color='white', text_color='black')
@@ -155,9 +154,17 @@ while True:
             activelearner.supervisor_query()
         else:
             # For right now... but later implement something here that allows the user to get some random images and
-            # then train a model on those and continue execution.
+            # then train a model on those and continu0e execution.
             log_message('A model needs to be built for the active learner to find images in the region of disagreement,'
                         ' so aborting supervisor query.', 'ERROR')
+    if event == 'labelling_query_button':
+        if activelearner is not None:
+            activelearner.labelling_query()
+        else:
+            # For right now... but later implement something here that allows the user to get some random images and
+            # then train a model on those and continue execution.
+            log_message('A model needs to be built for the active learner to find images in the region of disagreement,'
+                        ' so aborting labelling query.', 'ERROR')
     if event == 'create_graph':
         if activelearner is not None:
             # fig = activelearner.get_figure()
