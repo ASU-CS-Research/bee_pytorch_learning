@@ -51,7 +51,7 @@ class DataLabellingWindow:
 
     @staticmethod
     def _create_layout(buttons):
-        layout = [[sg.Image(key='current_image')]]
+        layout = [[sg.Image(key='current_image', size=(100, 100))]]
         layout += [[sg.Button(name)] for name in buttons]
         layout.append([sg.Button("Delete Image")])
         return layout

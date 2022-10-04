@@ -24,20 +24,27 @@ def log_message(message: str, level: str = 'INFO', window=None):
     global logger
     global static_window
 
-    if window is not None:
-        logger = window['output_box'].Widget
-        static_window = window
-
-    logger.tag_config(level, background='black', foreground=color_codes[level])
     ts = datetime.now()
     log_msg = f'{ts} | '
     log_msg += ' %7s | ' % level
     log_msg += message + '\n'
+
+    if window is not None:
+        logger = window['output_box'].Widget
+        static_window = window
+    if static_window is None:
+        print(log_msg)
+        return
+
+    logger.tag_config(level, background='black', foreground=color_codes[level])
+
     logger.insert('end', log_msg, level)
     static_window.refresh()
 
 
 def annotate_img(csv_filepath, basename, class_val):
+    if basename == '.DS_Store':
+        return
     if not os.path.exists(csv_filepath):
         open_or_append = 'w'
     else:

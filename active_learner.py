@@ -1,3 +1,4 @@
+import math
 from datetime import datetime
 from typing import List, Optional
 
@@ -8,7 +9,6 @@ import torch.nn as nn
 from sklearn.manifold import TSNE
 from torch.autograd import Variable
 from torch.optim import Adam
-from torchvision.models import alexnet, resnet50
 from helper_functions import log_message, annotate_img
 import os
 
@@ -16,33 +16,16 @@ from custom_image_dataset import CustomImageDataset
 from data_labelling_window import DataLabellingWindow
 
 from supervisor_query_strategies.supervisor_query_strategy import SupervisorQueryStrategy
-from supervisor_query_strategies.uncertainty_sampling import UncertaintySampling
-
-from labelling_query_strategies.labelling_query_strategy import LabellingQueryStrategy
-from labelling_query_strategies.CAL import CAL
-from labelling_query_strategies.no_labelling import NoLabeling
 
 import torchvision.transforms as T
-
-neural_net_options = [
-    "alexnet",
-    "resnet50"
-]
-supervisor_query_options = [
-    "uncertainty_sampling"
-]
-labelling_query_options = [
-    "CAL",
-    "no_labelling"
-]
 
 
 class ActiveLearner:
 
-    def __init__(self, unlabeled_location: str, output_location: str, neural_net_selection: str,
-                 supervisor_query_selection: str, labelling_query_selection: str, training_perc: int,
-                 validation_perc: int, cross_validation: bool, classes: List[str], labeled_images_location: str,
-                 query_size: int, num_epochs: int, batch_size: Optional[int] = 64):
+    def __init__(self, unlabeled_location: str, output_location: str, training_perc: int,
+                 supervisor_query_strategy: SupervisorQueryStrategy, neural_net: nn, validation_perc: int,
+                 cross_validation: bool, classes: List[str], labeled_images_location: str, query_size: int,
+                 num_epochs: int, batch_size: Optional[int] = 64):
         self._num_epochs = num_epochs
         self._query_size = query_size
         self._batch_size = batch_size
@@ -52,15 +35,10 @@ class ActiveLearner:
         self._class_list = classes
         self._annotation_filename = 'annotations.csv'
 
-        self._neural_net_selection = neural_net_selection
-        self._supervisor_query_selection = supervisor_query_selection
-        self._labelling_query_selection = labelling_query_selection
-
         self._loss_fn = nn.CrossEntropyLoss()
-        self._neural_network: nn = self._build_nn(neural_net_selection)
+        self._neural_network: nn = neural_net
         self._optimizer = Adam(self._neural_network.parameters(), lr=0.0001, weight_decay=0.0001)
-        self._supervisor_query_strategy: SupervisorQueryStrategy = self._build_sqs(supervisor_query_selection)
-        self._labelling_query_strategy = self._build_lqs(labelling_query_selection)
+        self._supervisor_query_strategy: SupervisorQueryStrategy = supervisor_query_strategy
 
         self._training_perc = training_perc
         self._testing_perc = 100 - training_perc
@@ -82,10 +60,9 @@ class ActiveLearner:
                     f'{os.path.basename(unlabeled_location)}'
                     f'{" Labeled images are in " if labeled_images_location != "" else ""}'
                     f'{os.path.basename(labeled_images_location)}. '
-                    f' outputting model in {os.path.basename(output_location)}.\n\tNeural Network Selection: '
-                    f'{neural_net_selection}\n\tSupervisor Query Selection: {supervisor_query_selection}\n\t'
-                    f'Labelling Query Selection: {labelling_query_selection}\n\tTraining testing split: {training_perc}'
-                    f'/{self._testing_perc}\n\tValidation training split: {validation_perc}/{100 - validation_perc}\n\t'
+                    f' outputting model in {os.path.basename(output_location)}.\n\tTraining testing split: '
+                    f'{training_perc}/{self._testing_perc}\n\tValidation training split: '
+                    f'{validation_perc}/{100 - validation_perc}\n\t'
                     f'Using cross validation: {cross_validation}\n\tAll classes: {classes}',
                     'INFO')
         log_message('Generating training and testing data...', 'DEBUG')
@@ -95,6 +72,8 @@ class ActiveLearner:
 
         self._figure = None
         self._ax = None
+
+        self._supervisor_query_idx = 0
 
     def save_model(self, model_name=f'model_{datetime.now()}'):
         # Function to save the model
@@ -146,6 +125,8 @@ class ActiveLearner:
         optimize.
         """
         self._evaluated_unlabeled = None
+        self._supervisor_query_idx = 0
+
         log_message(f'Starting training over dataset in {self._num_epochs} epochs!')
         model = self._neural_network
         best_accuracy = 0.0
@@ -201,7 +182,7 @@ class ActiveLearner:
         log_message(f'Accuracy over the whole testing set is {accuracy: .3f}%', 'INFO')
         log_message(f'Model with best validation accuracy has been saved in {os.path.basename(self._output_location)}.')
 
-    def supervisor_query(self):
+    def supervisor_query(self, create_popup: Optional[bool] = True):
         """
         Queries the user or 'supervisor' for labels on a number of images equal to `self._query_size`. After getting
         every label, it places the images in the corresponding directories and regenerates the training data.
@@ -216,28 +197,42 @@ class ActiveLearner:
             self._unlabeled_images, batch_size=self._batch_size, shuffle=True
         )
         # Get the results if they haven't already been found...
-        accuracy, results, (features, f_labels, saved_image_paths) = self._test_accuracy(self._test_set, True) if \
+        accuracy, results, (features, f_labels, saved_image_paths) = self._test_accuracy(self._unlabeled_set, True) if \
             self._evaluated_unlabeled is None else self._evaluated_unlabeled
         # Make sure the _evaluated_unlabeled field is updated...
         self._evaluated_unlabeled = (accuracy, results, (features, f_labels, saved_image_paths))
-
         # Use the desired supervisor query strategy to find the `n` most useful images to label...
         indices = self._supervisor_query_strategy.query_data(results=results)
-        images = [saved_image_paths[i] for i in indices]
+        image_paths = [saved_image_paths[i] for i in indices]
+        # We also have to remove all the duplicates in this
+        image_paths = list(set(image_paths))
+        if create_popup:
+            # Create the pop-up gui for labelling the images, moving them into the correct location.
+            labelling_window = DataLabellingWindow(self._class_list,
+                                                   image_paths[self._supervisor_query_idx:
+                                                               self._supervisor_query_idx + self._query_size],
+                                                   self._labeled_images_location,
+                                                   self._unlabeled_images_location)
+            self._supervisor_query_idx += self._query_size
+            labelling_window.run_gui()
+            # Reload labeled images dataset with newly labeled images
+            self._labeled_images = self._load_labeled_images()
+            # Reload unlabeled images now that some have been removed...
+            self._unlabeled_images = self._load_unlabeled_images()
+            self._unlabeled_set = torch.utils.data.DataLoader(
+                self._unlabeled_images, batch_size=self._batch_size, shuffle=True
+            )
+        return image_paths
 
-        # Create the pop-up gui for labelling the images, moving them into the correct location.
-        labelling_window = DataLabellingWindow(self._class_list, images, self._labeled_images_location,
-                                               self._unlabeled_images_location)
-        labelling_window.run_gui()
-        # Reload labeled images dataset with newly labeled images
-        self._labeled_images = self._load_labeled_images()
-        # Reload unlabeled images now that some have been removed...
-        self._unlabeled_images = self._load_unlabeled_images()
-        self._unlabeled_set = torch.utils.data.DataLoader(
-            self._unlabeled_images, batch_size=self._batch_size, shuffle=True
-        )
+    def labelling_query(self, query_size_perc: Optional[float] = 0.1):
+        # Get the paths to each image in order of least confident to most confident based on the given supervisor query
+        # strategy.
+        image_paths = self.supervisor_query(create_popup=False)
+        # Reverse the list, so we get the most confident first...
+        image_paths.reverse()
+        # Remove all the images that we aren't confident enough about...
+        image_paths = image_paths[:math.floor(len(image_paths) * query_size_perc)]
 
-    def _labelling_query(self):
         pass
 
     def _generate_test_train_validation(self):
@@ -306,86 +301,11 @@ class ActiveLearner:
 
         return unlabeled_images
 
-    def _build_nn(self, neural_net_selection: str) -> nn:
-        neuralnet: nn
-        if neural_net_selection == 'alexnet':
-            neuralnet = alexnet(pretrained=True)
-            layer = neuralnet.classifier
-        elif neural_net_selection == 'resnet50':
-            neuralnet = resnet50(pretrained=True)
-            layer = neuralnet.fc
-        else:
-            log_message(f'Sorry, the given neural network, \"{neural_net_selection}\", has not been implemented.',
-                        'ERROR')
-            raise ValueError()
-        if type(layer) == nn.modules.container.Sequential:
-            neuralnet.classifier[-1] = nn.Linear(in_features=layer[-1].in_features, out_features=len(self._class_list))
-        else:
-            neuralnet.classifier = nn.Linear(in_features=layer.in_features, out_features=len(self._class_list))
-        return neuralnet
-
-    @staticmethod
-    def _build_sqs(supervisor_query_selection: str) -> SupervisorQueryStrategy:
-        supervisor_query_strategy: SupervisorQueryStrategy
-        if supervisor_query_selection == "uncertainty_sampling":
-            supervisor_query_strategy = UncertaintySampling()
-        else:
-            log_message(f'Sorry, the given supervisor query strategy, \"{supervisor_query_selection}\", '
-                        f'has not been implemented.',
-                        'ERROR')
-            raise ValueError()
-        return supervisor_query_strategy
-
-    @staticmethod
-    def _build_lqs(labelling_query_selection: str) -> LabellingQueryStrategy:
-        labelling_query_strategy: LabellingQueryStrategy
-        if labelling_query_selection == "CAL":
-            labelling_query_strategy = CAL()
-        elif labelling_query_selection == "no_labelling":
-            labelling_query_strategy = NoLabeling()
-        else:
-            log_message(f'Sorry, the given labelling query strategy, \"{labelling_query_selection}\", '
-                        f'has not been implemented.',
-                        'ERROR')
-            raise ValueError()
-        return labelling_query_strategy
-
     @staticmethod
     def _scale_to_01_range(x):
         value_range = (np.max(x) - np.min(x))
         starts_from_zero = x - np.min(x)
         return starts_from_zero / value_range
-
-    def get_figure(self) -> plt.Figure:
-        if self._figure is None:
-            figure, ax = plt.subplots(figsize=(10, 10), dpi=100)
-            self._figure = figure
-            self._ax = ax
-        self._ax.cla()
-        self._ax.set_xlabel(f'Probability {self._class_list[1]}')
-        self._ax.set_ylabel(f'Probability {self._class_list[0]}')
-        plt.xlim(0, 1)
-        plt.ylim(0, 1)
-        # Check if all of this has already been calculated since last training.
-        accuracy, results, (features, f_labels, saved_image_paths) = self._test_accuracy(self._test_set, True) if \
-            self._evaluated_unlabeled is None else self._evaluated_unlabeled
-        # Make sure the _evaluated_unlabeled field is updated...
-        self._evaluated_unlabeled = (accuracy, results, (features, f_labels, saved_image_paths))
-        points, labels = zip(*results)
-        x, y = zip(*points)
-        self._ax.grid()
-        for class_ind in np.unique(labels):
-            i = np.where(labels == class_ind)
-            self._ax.scatter(np.asarray(x)[i], np.asarray(y)[i], label=self._class_list[class_ind], alpha=0.7)
-
-        accuracy, results = self._test_accuracy(self._unlabeled_set, True)
-        points, labels = zip(*results)
-        x, y = zip(*points)
-        self._ax.scatter(x, y, label='Unlabeled', alpha=0.4)
-        self._ax.legend()
-        self._figure.canvas.draw()
-        # plt.legend()
-        return self._figure
 
     def get_tsne(self) -> plt.Figure:
         if self._figure is None:
@@ -394,7 +314,8 @@ class ActiveLearner:
             self._ax = ax
         self._ax.cla()
         t_accuracy, t_results, (t_features, tf_labels, saved_image_paths) = self._test_accuracy(self._test_set, True)
-        u_accuracy, u_results, (u_features, uf_labels, saved_image_paths) = self._test_accuracy(self._unlabeled_set, True) \
+        u_accuracy, u_results, (u_features, uf_labels, saved_image_paths) = self._test_accuracy(self._unlabeled_set,
+                                                                                                True) \
             if self._evaluated_unlabeled is None else self._evaluated_unlabeled
         # Make sure the _evaluated_unlabeled field is updated...
         self._evaluated_unlabeled = (u_accuracy, u_results, (u_features, uf_labels, saved_image_paths))

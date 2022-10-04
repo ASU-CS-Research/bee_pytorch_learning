@@ -24,7 +24,7 @@ class UncertaintySampling(sqs.SupervisorQueryStrategy):
         for i, model_out in enumerate(probabilities):
             sorted_lst = np.argsort(model_out)
             margin = sorted_lst[-1] - sorted_lst[-2]
-            margins_and_indices.append((i, margin))
-        margins_and_indices = sorted(margins_and_indices, key=lambda entry: entry[1])
+            margins_and_indices.append((margin, i))
+        margins_and_indices = sorted(margins_and_indices, key=lambda entry: entry[0])
         margins, indices = zip(*margins_and_indices)
         return indices

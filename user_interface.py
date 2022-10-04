@@ -1,14 +1,11 @@
-import time
 from datetime import datetime
 from typing import List
 
 import PySimpleGUI as sg
 import os
 
-import numpy as np
-from matplotlib import pyplot as plt
-
 import active_learner
+import active_learner_intermediary
 from helper_functions import log_message, draw_figure
 
 NUM_EPOCHS = 5
@@ -66,15 +63,13 @@ layouts[1] = [
 
 layouts[2] = [
     [sg.T('This page is for some advanced decisions for further customization.')],
-    [sg.T('Neural Network Selection: '), sg.Listbox(active_learner.neural_net_options,
-                                                    default_values=active_learner.neural_net_options[0],
+    [sg.T('Neural Network Selection: '), sg.Listbox(active_learner_intermediary.neural_net_options,
+                                                    default_values=active_learner_intermediary.neural_net_options[0],
                                                     key='neural_network')],
-    [sg.T('Supervisor Query Selection: '), sg.Listbox(active_learner.supervisor_query_options,
-                                                      default_values=active_learner.supervisor_query_options[0],
+    [sg.T('Supervisor Query Selection: '), sg.Listbox(active_learner_intermediary.supervisor_query_options,
+                                                      default_values=
+                                                      active_learner_intermediary.supervisor_query_options[0],
                                                       key='supervisor_query')],
-    [sg.T('Labelling Query Selection: '), sg.Listbox(active_learner.labelling_query_options,
-                                                     default_values=active_learner.labelling_query_options[0],
-                                                     key='labelling_query')],
     [sg.T('Batch Size: '), sg.InputText(str(BATCH_SIZE), key='batch_size')],
     [sg.T('Training percentage: '), sg.InputText(70, key='training_perc'), sg.T('%')],
     [sg.T('Remaining percent of the data used for testing.')],
@@ -135,15 +130,27 @@ while True:
                 values['output_dir'] = DEFAULT_OUTPUT_DIR
             values['classes'] = values['classes'].split(', ')
 
-            activelearner = active_learner.ActiveLearner(values['unlabeled_dir'], values['output_dir'],
-                                                         values['neural_network'][0], values['supervisor_query'][0],
-                                                         values['labelling_query'][0], values['training_perc'],
-                                                         values['validation_perc'], values['cross_validation'],
-                                                         values['classes'], values['labeled_dir'], values['query_size'],
-                                                         values['num_epochs'], values['batch_size'])
+            activelearner = active_learner_intermediary.build_active_learner(values['unlabeled_dir'],
+                                                                             values['output_dir'],
+                                                                             values['neural_network'][0],
+                                                                             values['supervisor_query'][0],
+                                                                             values['training_perc'],
+                                                                             values['validation_perc'],
+                                                                             values['cross_validation'],
+                                                                             values['classes'],
+                                                                             values['labeled_dir'],
+                                                                             values['query_size'],
+                                                                             values['num_epochs'],
+                                                                             values['batch_size'])
         activelearner.train()
     if event == 'supervisor_query_button':
         if activelearner is not None:
+            try:
+                values['query_size'] = int(values['query_size'])
+            except ValueError as e:
+                log_message(f'Value for query size is not an int. Aborting supervisor query. Error output: {e}',
+                            'ERROR')
+                continue
             activelearner.update_query_size(values['query_size'])
             activelearner.supervisor_query()
         else:
