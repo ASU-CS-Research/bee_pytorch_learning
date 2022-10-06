@@ -40,17 +40,20 @@ def _build_nn(neural_net_selection: str) -> nn:
     if neural_net_selection == 'alexnet':
         neuralnet = alexnet(pretrained=True)
         layer = neuralnet.classifier
+        neuralnet.classifier[-1] = nn.Linear(in_features=layer[-1].in_features, out_features=len(class_list))
+        neuralnet.features.requires_grad_(False)
     elif neural_net_selection == 'resnet50':
         neuralnet = resnet50(pretrained=True)
         layer = neuralnet.fc
+        neuralnet.classifier = nn.Linear(in_features=layer.in_features, out_features=len(class_list))
     else:
-        log_message(f'Sorry, the given neural network, \"{neural_net_selection}\", has not been implemented.',
+        log_message(f'Sorry, the given neural network, \"{neural_net_selection}\", has not been implemented.' +
+                    'To implement a new model selection in the user interface, you both have to include a key for it' +
+                    'in active_learner_intermediary.neural_net_options as well as adding the configuration in '
+                    '_build_nn() in the same file.',
                     'ERROR')
         raise ValueError()
-    if type(layer) == nn.modules.container.Sequential:
-        neuralnet.classifier[-1] = nn.Linear(in_features=layer[-1].in_features, out_features=len(class_list))
-    else:
-        neuralnet.classifier = nn.Linear(in_features=layer.in_features, out_features=len(class_list))
+
     return neuralnet
 
 

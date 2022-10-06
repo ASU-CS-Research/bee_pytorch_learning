@@ -27,6 +27,7 @@ class ActiveLearner:
                  supervisor_query_strategy: SupervisorQueryStrategy, neural_net: nn, validation_perc: int,
                  cross_validation: bool, classes: List[str], labeled_images_location: str, query_size: int,
                  num_epochs: int, batch_size: Optional[int] = 64):
+        self._completed_epochs = 0
         self._num_epochs = num_epochs
         self._query_size = query_size
         self._batch_size = batch_size
@@ -127,8 +128,9 @@ class ActiveLearner:
 
     def train(self):
         """
-        Training function. We simply have to loop over our data iterator and feed the inputs to the network and
-        optimize.
+        This function trains the model for the number of epochs given at instantiation. For each epoch we iterate over
+        our image data training set and do backward propagation based on the given labels. At the end of each epoch, we
+        check the validation score and save the
         """
         self._evaluated_unlabeled = None
         self._supervisor_query_idx = 0
@@ -176,7 +178,9 @@ class ActiveLearner:
                     running_loss = 0.0
             # Compute and print the average accuracy fo this epoch when tested over all 10000 test images
             accuracy = self._test_accuracy(self._validation_set)
-            log_message(f'For epoch {epoch + 1} the accuracy over the whole validation set is {accuracy: .3f}%', 'INFO')
+            self._completed_epochs += 1
+            log_message(f'For epoch {self._completed_epochs} the accuracy over the validation set is '
+                        f'{accuracy: .3f}%', 'INFO')
 
             # we want to save the model if the accuracy is the best
             if accuracy > best_accuracy:
@@ -194,8 +198,7 @@ class ActiveLearner:
         every label, it places the images in the corresponding directories and regenerates the training data.
         """
         # Check to be sure there are some images to label...
-        if not os.path.exists(self._unlabeled_images_location) or \
-                len(os.listdir(self._unlabeled_images_location)) == 0:
+        if not os.path.exists(self._unlabeled_images_location) or len(os.listdir(self._unlabeled_images_location)) == 0:
             log_message("No unlabeled images to label!", 'INFO')
         # Load the unlabeled images (needs to run each time this is called, as this method removes unlabeled images.)
         self._unlabeled_images = self._load_unlabeled_images()
