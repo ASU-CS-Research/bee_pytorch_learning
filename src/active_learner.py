@@ -19,6 +19,7 @@ from examine_images_popup import ExamineImagesPopup
 from supervisor_query_strategies.supervisor_query_strategy import SupervisorQueryStrategy
 
 import torchvision.transforms as T
+from logging_level import LoggingLevel
 
 
 class ActiveLearner:
@@ -66,8 +67,8 @@ class ActiveLearner:
                     f'{training_perc}/{self._testing_perc}\n\tValidation training split: '
                     f'{validation_perc}/{100 - validation_perc}\n\t'
                     f'Using cross validation: {cross_validation}\n\tAll classes: {classes}',
-                    'INFO')
-        log_message('Generating training and testing data...', 'DEBUG')
+                    LoggingLevel.INFO)
+        log_message('Generating training and testing data...', LoggingLevel.DEBUG)
         self._test_set, self._training_set, self._validation_set = self._generate_test_train_validation()
 
         self._evaluated_unlabeled = None
@@ -114,7 +115,7 @@ class ActiveLearner:
 
                 soft = nn.functional.softmax(outputs, dim=1)
                 results += (list(zip(list(soft.cpu().numpy()), labels.cpu().numpy())))
-                # log_message(f'{soft.numpy()}', 'WARNING')
+                # log_message(f'{soft.numpy()}', LoggingLevel.WARNING)
                 # the label with the highest energy will be our prediction
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
@@ -141,7 +142,7 @@ class ActiveLearner:
 
         # Define your execution device
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        log_message(f"The model will be running on {device} device", 'DEBUG')
+        log_message(f"The model will be running on {device} device", LoggingLevel.DEBUG)
         # Convert model parameters and buffers to CPU or Cuda
         model.to(device)
 
@@ -158,6 +159,7 @@ class ActiveLearner:
                 self._optimizer.zero_grad()
                 # predict classes using images from the training set
                 images = images[:, :3, :, :]
+                print(images.shape)
                 outputs = model(images)
                 # current_outputs = outputs.cpu().numpy()
                 # self._features = np.concatenate((outputs, current_outputs))
@@ -173,14 +175,14 @@ class ActiveLearner:
                     # print twice per epoch
                     log_message('[%d, %5d] loss: %.5f' %
                                 (epoch + 1, i + 1, running_loss / self._batch_size),
-                                'DEBUG')
+                                LoggingLevel.DEBUG)
                     # zero the loss
                     running_loss = 0.0
             # Compute and print the average accuracy fo this epoch when tested over all 10000 test images
             accuracy = self._test_accuracy(self._validation_set)
             self._completed_epochs += 1
             log_message(f'For epoch {self._completed_epochs} the accuracy over the validation set is '
-                        f'{accuracy: .3f}%', 'INFO')
+                        f'{accuracy: .3f}%', LoggingLevel.INFO)
 
             # we want to save the model if the accuracy is the best
             if accuracy > best_accuracy:
@@ -189,7 +191,7 @@ class ActiveLearner:
 
         log_message('Finished training!')
         accuracy = self._test_accuracy(self._test_set)
-        log_message(f'Accuracy over the whole testing set is {accuracy: .3f}%', 'INFO')
+        log_message(f'Accuracy over the whole testing set is {accuracy: .3f}%', LoggingLevel.INFO)
         log_message(f'Model with best validation accuracy has been saved in {os.path.basename(self._output_location)}.')
 
     def supervisor_query(self, create_popup: Optional[bool] = True):
@@ -199,7 +201,7 @@ class ActiveLearner:
         """
         # Check to be sure there are some images to label...
         if not os.path.exists(self._unlabeled_images_location) or len(os.listdir(self._unlabeled_images_location)) == 0:
-            log_message("No unlabeled images to label!", 'INFO')
+            log_message("No unlabeled images to label!", LoggingLevel.INFO)
         # Load the unlabeled images (needs to run each time this is called, as this method removes unlabeled images.)
         self._unlabeled_images = self._load_unlabeled_images()
         self._unlabeled_set = torch.utils.data.DataLoader(
@@ -259,11 +261,11 @@ class ActiveLearner:
             self._labeled_images, (train_count, valid_count, test_count)
         )
 
-        log_message('Split labeled data into testing, training and validation...', 'DEBUG')
+        log_message('Split labeled data into testing, training and validation...', LoggingLevel.DEBUG)
         log_message(f'{"Not u" if self._use_cross_validation is False else "U"}sing cross validation to generate the '
-                    f'validation set.', 'DEBUG')
+                    f'validation set.', LoggingLevel.DEBUG)
         if self._use_cross_validation:
-            log_message('Cross validation has not been implemented yet.', 'WARNING')
+            log_message('Cross validation has not been implemented yet.', LoggingLevel.WARNING)
 
         train_dataset_loader = torch.utils.data.DataLoader(
             training_set, batch_size=self._batch_size, shuffle=True
@@ -285,10 +287,10 @@ class ActiveLearner:
                 os.remove(annotations_fp)
             for i, nn_class in enumerate(self._class_list):
                 if i == 0:
-                    log_message('Finding labeled images...', 'DEBUG')
+                    log_message('Finding labeled images...', LoggingLevel.DEBUG)
                 path = os.path.join(self._labeled_images_location, nn_class)
                 if os.path.exists(path):
-                    log_message(f'Found labeled images for class "{nn_class}"!', 'DEBUG')
+                    log_message(f'Found labeled images for class "{nn_class}"!', LoggingLevel.DEBUG)
                     for filepath in os.listdir(path):
                         annotate_img(annotations_fp,
                                      (os.path.join(nn_class, os.path.basename(filepath))),
@@ -301,7 +303,7 @@ class ActiveLearner:
     def _load_unlabeled_images(self) -> CustomImageDataset:
         unlabeled_images = None
         if self._unlabeled_images_location != '':
-            log_message(f'Finding unlabeled images...', 'DEBUG')
+            log_message(f'Finding unlabeled images...', LoggingLevel.DEBUG)
             annotations_fp = os.path.join(self._unlabeled_images_location, self._annotation_filename)
             if os.path.exists(annotations_fp):
                 os.remove(annotations_fp)

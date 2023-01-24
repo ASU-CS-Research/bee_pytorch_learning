@@ -9,8 +9,8 @@ from helper_functions import log_message
 class DataLabellingWindow:
      
     def __init__(self, class_list: List[str], img_filenames: List[str],
-                 data_location: Optional[str] = os.path.abspath('./data'),
-                 unlabeled_imgs_location: Optional[str] = os.path.abspath('./unlabeled')):
+                 data_location: Optional[str] = os.path.abspath('../data'),
+                 unlabeled_imgs_location: Optional[str] = os.path.abspath('../data/unlabeled')):
         self._data_location = data_location
         self._layout = self._create_layout(buttons=class_list)
         self._opt_list = class_list

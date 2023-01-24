@@ -1,6 +1,4 @@
 .idea/
-videos/
-unlabeled/
-models/
 data/
+outputs/
 .DS_Store

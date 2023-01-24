@@ -96,13 +96,13 @@ class ExamineImagesPopup:
                 elif event == 'Accept':
                     try:
                         n_labeled_images = self._accept_query(thresh=float(values['probability_threshold']) / 100)
-                        log_message(f'Finished labelling query! labeled {n_labeled_images} images.', 'INFO')
+                        log_message(f'Finished labelling query! labeled {n_labeled_images} images.', LoggingLevel.INFO)
                     except ValueError as e:
                         log_message('Probability threshold must be able to be converted into a float. '
-                                    f'Error output: {e}', 'ERROR')
+                                    f'Error output: {e}', LoggingLevel.ERROR)
                     break
 
                 elif event == sg.WIN_CLOSED or event == 'Close' or event == 'Reject':
-                    log_message('Labeling query rejected.', 'INFO')
+                    log_message('Labeling query rejected.', LoggingLevel.INFO)
                     break
 
