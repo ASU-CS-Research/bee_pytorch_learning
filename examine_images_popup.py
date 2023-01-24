@@ -44,6 +44,8 @@ class ExamineImagesPopup:
         if self._outputs[img_idx] is None:
             img = Variable(img.float().cpu())
             img = self._transform(img).unsqueeze(0)
+            # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            self._model.to("cpu")
             model_output = self._model(img)
             model_output = nn.functional.softmax(model_output, dim=1)
             self._outputs[img_idx] = model_output.numpy()
@@ -74,7 +76,7 @@ class ExamineImagesPopup:
         with no_grad():
             while True:
                 if values is not None and values['img_index'].isnumeric() and \
-                        int(values['img_index']) < len(self._img_filenames):
+                        int(values['img_index']) < len(self._img_list):
                     self._img_index = int(values['img_index'])
                 filepath, img = self._img_list[self._img_index]
                 window['current_image'].update(filepath)

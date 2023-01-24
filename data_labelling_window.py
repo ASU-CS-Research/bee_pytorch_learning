@@ -25,7 +25,10 @@ class DataLabellingWindow:
             os.remove(filepath)
         else:
             file_name = os.path.basename(filepath)
-            os.rename(filepath, os.path.join(self._data_location, label, file_name))
+            new_location = os.path.join(self._data_location, label)
+            if not os.path.exists(new_location):
+                os.makedirs(new_location)
+            os.rename(filepath, os.path.join(new_location, file_name))
 
     def add_images(self, new_img_list):
         for file_name in new_img_list:

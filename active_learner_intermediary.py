@@ -2,6 +2,7 @@ from typing import Optional, List
 
 import torch
 import torch.nn as nn
+import torchvision.models
 from torchvision.models import alexnet, resnet50
 
 from active_learner import ActiveLearner
@@ -38,7 +39,7 @@ def _build_nn(neural_net_selection: str) -> nn:
     global class_list
     neuralnet: nn
     if neural_net_selection == 'alexnet':
-        neuralnet = alexnet(pretrained=True)
+        neuralnet = alexnet(weights=torchvision.models.AlexNet_Weights.IMAGENET1K_V1)
         layer = neuralnet.classifier
         neuralnet.classifier[-1] = nn.Linear(in_features=layer[-1].in_features, out_features=len(class_list))
         neuralnet.features.requires_grad_(False)
@@ -46,6 +47,7 @@ def _build_nn(neural_net_selection: str) -> nn:
         neuralnet = resnet50(pretrained=True)
         layer = neuralnet.fc
         neuralnet.classifier = nn.Linear(in_features=layer.in_features, out_features=len(class_list))
+        neuralnet.features.requires_grad_(False)
     else:
         log_message(f'Sorry, the given neural network, \"{neural_net_selection}\", has not been implemented.' +
                     'To implement a new model selection in the user interface, you both have to include a key for it' +
