@@ -20,14 +20,15 @@ from supervisor_query_strategies.supervisor_query_strategy import SupervisorQuer
 
 import torchvision.transforms as T
 from logging_level import LoggingLevel
+import json
 
 
 class ActiveLearner:
 
     def __init__(self, unlabeled_location: str, output_location: str, training_perc: int,
-                 supervisor_query_strategy: SupervisorQueryStrategy, neural_net: nn, validation_perc: int,
-                 cross_validation: bool, classes: List[str], labeled_images_location: str, query_size: int,
-                 num_epochs: int, batch_size: Optional[int] = 64):
+                 supervisor_query_strategy: SupervisorQueryStrategy, neural_net: nn, neural_net_selection: str,
+                 validation_perc: int, cross_validation: bool, classes: List[str], labeled_images_location: str,
+                 query_size: int, num_epochs: int, batch_size: Optional[int] = 64):
         self._completed_epochs = 0
         self._num_epochs = num_epochs
         self._query_size = query_size
@@ -40,6 +41,7 @@ class ActiveLearner:
 
         self._loss_fn = nn.CrossEntropyLoss()
         self._neural_network: nn = neural_net
+        self._neural_network_selection = neural_net_selection
         self._optimizer = Adam(self._neural_network.parameters(), lr=0.0001, weight_decay=0.0001)
         self._supervisor_query_strategy: SupervisorQueryStrategy = supervisor_query_strategy
 
@@ -80,9 +82,17 @@ class ActiveLearner:
 
     def save_model(self, model_name=f'model_{datetime.now().strftime("%H-%M-%S")}'):
         # Function to save the model
-        if not os.path.exists(self._output_location):
-            os.makedirs(self._output_location)
-        full_path = os.path.join(self._output_location, model_name)
+        output_location = os.path.join(self._output_location, model_name)
+        if not os.path.exists(output_location):
+            os.makedirs(output_location)
+        metadata = {
+            'model_type': self._neural_network_selection,
+            'epochs_elapsed': self._completed_epochs,
+            'classes': self._class_list
+        }
+        with open(os.path.join(output_location, 'metadata.json'), 'w') as file:
+            json.dump(metadata, file)
+        full_path = os.path.join(output_location, model_name)
         torch.save(self._neural_network.state_dict(), full_path)
 
     def _test_accuracy(self, dataset, return_full_results: Optional[bool] = False):
@@ -159,7 +169,7 @@ class ActiveLearner:
                 self._optimizer.zero_grad()
                 # predict classes using images from the training set
                 images = images[:, :3, :, :]
-                print(images.shape)
+                # print(images.shape)
                 outputs = model(images)
                 # current_outputs = outputs.cpu().numpy()
                 # self._features = np.concatenate((outputs, current_outputs))

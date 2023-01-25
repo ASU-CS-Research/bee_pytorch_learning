@@ -11,7 +11,7 @@ from logging_level import LoggingLevel
 NUM_EPOCHS = 5
 QUERY_SIZE = 50
 BATCH_SIZE = 64
-DEFAULT_OUTPUT_DIR = os.path.abspath(f'./outputs/output_{datetime.now().strftime("%Y-%m-%d")}')
+DEFAULT_OUTPUT_DIR = os.path.abspath(f'../outputs/output_{datetime.now().strftime("%Y-%m-%d")}')
 
 font = ("Helvetica", 18)
 sg.set_options(font=font, text_element_background_color='white', text_color='black')
@@ -25,6 +25,9 @@ classes: List[str] = []
 layouts = [[] for _ in range(10)]
 
 layouts[0] = [
+    [sg.T('Neural Network Selection: '), sg.Listbox(active_learner_intermediary.neural_net_options,
+                                                    default_values=active_learner_intermediary.neural_net_options[0],
+                                                    key='neural_network')],
     [sg.T('Labeled Images Directory: '), sg.FolderBrowse('Select File Location...',
                                                          initial_folder=os.path.abspath('../'),
                                                          key='labeled_dir')],
@@ -59,9 +62,10 @@ layouts[1] = [
 
 layouts[2] = [
     [sg.T('This page is for some advanced decisions for further customization.')],
-    [sg.T('Neural Network Selection: '), sg.Listbox(active_learner_intermediary.neural_net_options,
-                                                    default_values=active_learner_intermediary.neural_net_options[0],
-                                                    key='neural_network')],
+    [sg.T('Existing Model to Train: '), sg.FileBrowse('Select File Location...',
+                                                      initial_folder=os.path.abspath('../'),
+                                                      key='existing_model_location')],
+    [sg.T('Model selction and existing model architecture must match!')],
     [sg.T('Supervisor Query Selection: '), sg.Listbox(active_learner_intermediary.supervisor_query_options,
                                                       default_values=
                                                       active_learner_intermediary.supervisor_query_options[0],
@@ -127,8 +131,8 @@ def run_gui():
                                     f'data, we can\'t train, so this training session is aborted.', LoggingLevel.ERROR)
                         continue
                 if values['output_dir'] == '':
-                    log_message(f'No directory location provided for output directory. Defaulting to {DEFAULT_OUTPUT_DIR}',
-                                LoggingLevel.WARNING)
+                    log_message(f'No directory location provided for output directory. Defaulting to '
+                                f'{DEFAULT_OUTPUT_DIR}', LoggingLevel.WARNING)
                     values['output_dir'] = DEFAULT_OUTPUT_DIR
                 values['classes'] = values['classes'].split(', ')
 
@@ -143,7 +147,8 @@ def run_gui():
                                                                                  values['labeled_dir'],
                                                                                  values['query_size'],
                                                                                  values['num_epochs'],
-                                                                                 values['batch_size'])
+                                                                                 values['batch_size'],
+                                                                                 values['existing_model_location'])
             activelearner.train()
         if event == 'supervisor_query_button':
             if activelearner is not None:

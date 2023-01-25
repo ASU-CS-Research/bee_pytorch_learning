@@ -8,6 +8,7 @@ import torchvision.transforms as T
 from torchvision.io import read_image
 from torch.autograd import Variable
 from torch import no_grad
+from logging_level import LoggingLevel
 
 
 class ExamineImagesPopup:
@@ -22,7 +23,7 @@ class ExamineImagesPopup:
             [sg.T(self._model_output_str, key='model_output')],
             [sg.Image(key='current_image', size=(100, 100))],
             [sg.T('Look through the images and confirm that it is working as intended, and then accept or reject'
-                  'the labelling query.')],
+                  ' the labelling query.')],
             [sg.B('Accept'), sg.T('Probability Threshold: '), sg.InputText(str(0), key='probability_threshold'),
              sg.T('%')],
             [sg.B('Reject')]
@@ -88,10 +89,12 @@ class ExamineImagesPopup:
 
                 event, values = window.read(timeout=100)
                 if event == '→':
-                    self._img_index += 1
+                    if self._img_index + 1 < len(self._img_filenames):
+                        self._img_index += 1
                     window['img_index'].update(self._img_index)
                 elif event == '←':
-                    self._img_index -= 1
+                    if self._img_index - 1 >= 0:
+                        self._img_index -= 1
                     window['img_index'].update(self._img_index)
                 elif event == 'Accept':
                     try:
