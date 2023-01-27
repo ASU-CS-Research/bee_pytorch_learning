@@ -117,6 +117,7 @@ class ActiveLearner:
 
                 saved_image_paths += list(paths)
                 # run the model on the test set to predict labels
+                model.to(device)
                 outputs = model(images)
                 # current_outputs = outputs.cpu().numpy()
                 features = outputs.cpu() if features is None else np.concatenate((features, outputs.cpu()))
@@ -131,7 +132,7 @@ class ActiveLearner:
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 accuracy += (predicted == labels).sum().item()
-
+        model.to('cpu')
         # compute the accuracy over all test images
         accuracy = (100 * accuracy / total)
         ret = (accuracy, results, (features, f_labels, saved_image_paths)) if return_full_results else accuracy
@@ -171,6 +172,7 @@ class ActiveLearner:
                 # predict classes using images from the training set
                 images = images[:, :3, :, :]
                 # print(images.shape)
+                model.to(device)
                 outputs = model(images)
                 # current_outputs = outputs.cpu().numpy()
                 # self._features = np.concatenate((outputs, current_outputs))
