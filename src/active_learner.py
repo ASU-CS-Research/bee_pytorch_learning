@@ -16,7 +16,7 @@ from custom_image_dataset import CustomImageDataset
 from data_labelling_window import DataLabellingWindow
 from examine_images_popup import ExamineImagesPopup
 
-from supervisor_query_strategies.supervisor_query_strategy import SupervisorQueryStrategy
+from supervisor_labeling_strategies.supervisor_labeling_strategy import SupervisorLabelingStrategy
 
 import torchvision.transforms as T
 from logging_level import LoggingLevel
@@ -26,7 +26,7 @@ import json
 class ActiveLearner:
 
     def __init__(self, unlabeled_location: str, output_location: str, training_perc: int,
-                 supervisor_query_strategy: SupervisorQueryStrategy, neural_net: nn, neural_net_selection: str,
+                 supervisor_labeling_strategy: SupervisorLabelingStrategy, neural_net: nn, neural_net_selection: str,
                  validation_perc: int, cross_validation: bool, classes: List[str], labeled_images_location: str,
                  query_size: int, num_epochs: int, batch_size: Optional[int] = 64):
         self._completed_epochs = 0
@@ -43,7 +43,7 @@ class ActiveLearner:
         self._neural_network: nn = neural_net
         self._neural_network_selection = neural_net_selection
         self._optimizer = Adam(self._neural_network.parameters(), lr=0.0001, weight_decay=0.0001)
-        self._supervisor_query_strategy: SupervisorQueryStrategy = supervisor_query_strategy
+        self._supervisor_labeling_strategy: SupervisorLabelingStrategy = supervisor_labeling_strategy
 
         self._training_perc = training_perc
         self._testing_perc = 100 - training_perc
@@ -78,7 +78,7 @@ class ActiveLearner:
         self._figure = None
         self._ax = None
 
-        self._supervisor_query_idx = 0
+        self._supervisor_labeling_idx = 0
 
     def save_model(self, model_name=f'model_{datetime.now().strftime("%H-%M-%S")}'):
         # Function to save the model
@@ -125,6 +125,7 @@ class ActiveLearner:
 
                 soft = nn.functional.softmax(outputs, dim=1)
                 results += (list(zip(list(soft.cpu().numpy()), labels.cpu().numpy())))
+                # print(results)
                 # log_message(f'{soft.numpy()}', LoggingLevel.WARNING)
                 # the label with the highest energy will be our prediction
                 _, predicted = torch.max(outputs.data, 1)
@@ -144,7 +145,7 @@ class ActiveLearner:
         check the validation score and save the
         """
         self._evaluated_unlabeled = None
-        self._supervisor_query_idx = 0
+        self._supervisor_labeling_idx = 0
 
         log_message(f'Starting training over dataset in {self._num_epochs} epochs!')
         model = self._neural_network
@@ -204,7 +205,7 @@ class ActiveLearner:
         log_message(f'Accuracy over the whole testing set is {accuracy: .3f}%', LoggingLevel.INFO)
         log_message(f'Model with best validation accuracy has been saved in {os.path.basename(self._output_location)}.')
 
-    def supervisor_query(self, create_popup: Optional[bool] = True):
+    def supervisor_labeling(self, create_popup: Optional[bool] = True):
         """
         Queries the user or 'supervisor' for labels on a number of images equal to `self._query_size`. After getting
         every label, it places the images in the corresponding directories and regenerates the training data.
@@ -220,21 +221,22 @@ class ActiveLearner:
         # Get the results if they haven't already been found...
         accuracy, results, (features, f_labels, saved_image_paths) = self._test_accuracy(self._unlabeled_set, True) if \
             self._evaluated_unlabeled is None else self._evaluated_unlabeled
+        # print(results)
         # Make sure the _evaluated_unlabeled field is updated...
         self._evaluated_unlabeled = (accuracy, results, (features, f_labels, saved_image_paths))
-        # Use the desired supervisor query strategy to find the `n` most useful images to label...
-        indices = self._supervisor_query_strategy.query_data(results=results)
+        # Use the desired Supervisor Labeling strategy to find the `n` most useful images to label...
+        indices = self._supervisor_labeling_strategy.query_data(results=results)
         image_paths = [saved_image_paths[i] for i in indices]
-        # We also have to remove all the duplicates in this
+        # We also have to remove all the duplicates in the list
         image_paths = list(set(image_paths))
         if create_popup:
             # Create the pop-up gui for labelling the images, moving them into the correct location.
             labelling_window = DataLabellingWindow(self._class_list,
-                                                   image_paths[self._supervisor_query_idx:
-                                                               self._supervisor_query_idx + self._query_size],
+                                                   image_paths[self._supervisor_labeling_idx:
+                                                               self._supervisor_labeling_idx + self._query_size],
                                                    self._labeled_images_location,
                                                    self._unlabeled_images_location)
-            self._supervisor_query_idx += self._query_size
+            self._supervisor_labeling_idx += self._query_size
             labelling_window.run_gui()
             # Reload labeled images dataset with newly labeled images
             self._labeled_images = self._load_labeled_images()
@@ -245,10 +247,10 @@ class ActiveLearner:
             )
         return image_paths
 
-    def labelling_query(self, query_size_perc: Optional[float] = 0.1):
-        # Get the paths to each image in order of least confident to most confident based on the given supervisor query
-        # strategy.
-        image_paths = self.supervisor_query(create_popup=False)
+    def machine_label(self, query_size_perc: Optional[float] = 0.1):
+        # Get the paths to each image in order of least confident to most confident based on the given Supervisor
+        # Labeling strategy.
+        image_paths = self.supervisor_labeling(create_popup=False)
         # Reverse the list, so we get the most confident first...
         image_paths.reverse()
         # Remove all the images that we aren't confident enough about...
@@ -261,7 +263,7 @@ class ActiveLearner:
     def _generate_test_train_validation(self):
         if self._labeled_images is None:
             log_message(f'No labeled images found. Querying {self._query_size} random images for you to label...')
-            self.supervisor_query()
+            self.supervisor_labeling()
         total_count = int(len(self._labeled_images))
         train_count = int(total_count * (self._training_perc / 100))
         test_count = total_count - train_count

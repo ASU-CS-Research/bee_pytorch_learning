@@ -23,7 +23,7 @@ class ExamineImagesPopup:
             [sg.T(self._model_output_str, key='model_output')],
             [sg.Image(key='current_image', size=(100, 100))],
             [sg.T('Look through the images and confirm that it is working as intended, and then accept or reject'
-                  ' the labelling query.')],
+                  ' the Machine Labeling.')],
             [sg.B('Accept'), sg.T('Probability Threshold: '), sg.InputText(str(0), key='probability_threshold'),
              sg.T('%')],
             [sg.B('Reject')]
@@ -99,7 +99,7 @@ class ExamineImagesPopup:
                 elif event == 'Accept':
                     try:
                         n_labeled_images = self._accept_query(thresh=float(values['probability_threshold']) / 100)
-                        log_message(f'Finished labelling query! labeled {n_labeled_images} images.', LoggingLevel.INFO)
+                        log_message(f'Finished Machine Labeling! labeled {n_labeled_images} images.', LoggingLevel.INFO)
                     except ValueError as e:
                         log_message('Probability threshold must be able to be converted into a float. '
                                     f'Error output: {e}', LoggingLevel.ERROR)

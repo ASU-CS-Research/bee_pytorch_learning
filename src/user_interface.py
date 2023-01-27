@@ -37,7 +37,7 @@ layouts[0] = [
     [sg.Text('Output Folder: '), sg.FolderBrowse('Select File Location...',
                                                  initial_folder=os.path.abspath('../'),
                                                  key='output_dir')],
-    [sg.Text('Number of epochs between supervisor query: '), sg.InputText(str(NUM_EPOCHS), key='num_epochs')],
+    [sg.Text('Number of epochs between Supervisor Labeling: '), sg.InputText(str(NUM_EPOCHS), key='num_epochs')],
     [sg.Text('Classes to train: '), sg.InputText(key='classes')],
     [sg.Text('Classes should be given in the form \'Class0, Class1, ... ClassN\'')],
     [sg.Text('Query Size: '), sg.InputText(str(QUERY_SIZE), key='query_size')],
@@ -47,8 +47,8 @@ layouts[0] = [
 
 layouts[1] = [
     [sg.Button('Retrain Model', key='retrain'),
-     sg.Button('Supervisor Query', key='supervisor_query_button'),
-     sg.Button('Labelling Query', key='labelling_query_button'),
+     sg.Button('Supervisor Labeling', key='supervisor_labeling_button'),
+     sg.Button('Machine Labeling', key='machine_label_button'),
      sg.Button('Create Graph', key='create_graph')],
     [sg.Multiline(size=(100, 30),
                   background_color='black',
@@ -66,10 +66,10 @@ layouts[2] = [
                                                       initial_folder=os.path.abspath('../'),
                                                       key='existing_model_location')],
     [sg.T('Model selction and existing model architecture must match!')],
-    [sg.T('Supervisor Query Selection: '), sg.Listbox(active_learner_intermediary.supervisor_query_options,
+    [sg.T('Supervisor Labeling Selection: '), sg.Listbox(active_learner_intermediary.supervisor_labeling_options,
                                                       default_values=
-                                                      active_learner_intermediary.supervisor_query_options[0],
-                                                      key='supervisor_query')],
+                                                      active_learner_intermediary.supervisor_labeling_options[0],
+                                                      key='supervisor_labeling')],
     [sg.T('Batch Size: '), sg.InputText(str(BATCH_SIZE), key='batch_size')],
     [sg.T('Training percentage: '), sg.InputText(70, key='training_perc'), sg.T('%')],
     [sg.T('Remaining percent of the data used for testing.')],
@@ -139,7 +139,7 @@ def run_gui():
                 activelearner = active_learner_intermediary.build_active_learner(values['unlabeled_dir'],
                                                                                  values['output_dir'],
                                                                                  values['neural_network'][0],
-                                                                                 values['supervisor_query'][0],
+                                                                                 values['supervisor_labeling'][0],
                                                                                  values['training_perc'],
                                                                                  values['validation_perc'],
                                                                                  values['cross_validation'],
@@ -150,29 +150,29 @@ def run_gui():
                                                                                  values['batch_size'],
                                                                                  values['existing_model_location'])
             activelearner.train()
-        if event == 'supervisor_query_button':
+        if event == 'supervisor_labeling_button':
             if activelearner is not None:
                 try:
                     values['query_size'] = int(values['query_size'])
                 except ValueError as e:
-                    log_message(f'Value for query size is not an int. Aborting supervisor query. Error output: {e}',
+                    log_message(f'Value for query size is not an int. Aborting Supervisor Labeling. Error output: {e}',
                                 LoggingLevel.ERROR)
                     continue
                 activelearner.update_query_size(values['query_size'])
-                activelearner.supervisor_query()
+                activelearner.supervisor_labeling()
             else:
                 # For right now... but later implement something here that allows the user to get some random images and
                 # then train a model on those and continue execution.
                 log_message('A model needs to be built for the active learner to find images in the region of '
-                            'disagreement, so aborting supervisor query.', LoggingLevel.ERROR)
-        if event == 'labelling_query_button':
+                            'disagreement, so aborting Supervisor Labeling.', LoggingLevel.ERROR)
+        if event == 'machine_label_button':
             if activelearner is not None:
-                activelearner.labelling_query()
+                activelearner.machine_label()
             else:
                 # For right now... but later implement something here that allows the user to get some random images and
                 # then train a model on those and continue execution.
                 log_message('A model needs to be built for the active learner to find images in the region of '
-                            'disagreement, so aborting labelling query.', LoggingLevel.ERROR)
+                            'disagreement, so aborting Machine Labeling.', LoggingLevel.ERROR)
         if event == 'create_graph':
             if activelearner is not None:
                 # fig = activelearner.get_figure()

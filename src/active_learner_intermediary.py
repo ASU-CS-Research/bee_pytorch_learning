@@ -10,8 +10,8 @@ from active_learner import ActiveLearner
 from helper_functions import log_message
 from logging_level import LoggingLevel
 
-from supervisor_query_strategies.supervisor_query_strategy import SupervisorQueryStrategy
-from supervisor_query_strategies.uncertainty_sampling import UncertaintySampling
+from supervisor_labeling_strategies.supervisor_labeling_strategy import SupervisorLabelingStrategy
+from supervisor_labeling_strategies.uncertainty_sampling import UncertaintySampling
 
 neural_net_options = [
     "mobilenet_v3_small",
@@ -20,7 +20,7 @@ neural_net_options = [
     "alexnet",
     "vgg19"
 ]
-supervisor_query_options = [
+supervisor_labeling_options = [
     "uncertainty_sampling"
 ]
 
@@ -28,7 +28,7 @@ class_list = []
 
 
 def build_active_learner(unlabeled_location: str, output_location: str, neural_net_selection: str,
-                         supervisor_query_selection: str, training_perc: int,
+                         supervisor_labeling_selection: str, training_perc: int,
                          validation_perc: int, cross_validation: bool, classes: List[str], labeled_images_location: str,
                          query_size: int, num_epochs: int, batch_size: Optional[int] = 64,
                          existing_model_location: Optional[str] = None):
@@ -37,8 +37,8 @@ def build_active_learner(unlabeled_location: str, output_location: str, neural_n
     if existing_model_location == '':
         existing_model_location = None
     neural_net = _build_nn(neural_net_selection, existing_model_location)
-    supervisor_query_strategy = _build_sqs(supervisor_query_selection)
-    return ActiveLearner(unlabeled_location, output_location, training_perc, supervisor_query_strategy, neural_net,
+    supervisor_labeling_strategy = _build_sqs(supervisor_labeling_selection)
+    return ActiveLearner(unlabeled_location, output_location, training_perc, supervisor_labeling_strategy, neural_net,
                          neural_net_selection, validation_perc, cross_validation, classes, labeled_images_location,
                          query_size, num_epochs, batch_size)
 
@@ -77,13 +77,13 @@ def _build_nn(neuralnet_selection: str, existing_model_location: Optional[str] =
     return neuralnet
 
 
-def _build_sqs(supervisor_query_selection: str) -> SupervisorQueryStrategy:
-    supervisor_query_strategy: SupervisorQueryStrategy
-    if supervisor_query_selection == "uncertainty_sampling":
-        supervisor_query_strategy = UncertaintySampling()
+def _build_sqs(supervisor_labeling_selection: str) -> SupervisorLabelingStrategy:
+    supervisor_labeling_strategy: SupervisorLabelingStrategy
+    if supervisor_labeling_selection == "uncertainty_sampling":
+        supervisor_labeling_strategy = UncertaintySampling()
     else:
-        log_message(f'Sorry, the given supervisor query strategy, \"{supervisor_query_selection}\", '
+        log_message(f'Sorry, the given Supervisor Labeling strategy, \"{supervisor_labeling_selection}\", '
                     f'has not been implemented.',
                     LoggingLevel.ERROR)
         raise ValueError()
-    return supervisor_query_strategy
+    return supervisor_labeling_strategy
