@@ -43,7 +43,7 @@ def log_message(message: str, level: Optional[LoggingLevel] = LoggingLevel.INFO,
 
 
 def annotate_img(csv_filepath, basename, class_val):
-    if basename == '.DS_Store':
+    if '.DS_Store' in basename:
         return
     if not os.path.exists(csv_filepath):
         open_or_append = 'w'

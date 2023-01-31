@@ -2,3 +2,5 @@
 data/
 outputs/
 .DS_Store
+
+logs/

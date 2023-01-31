@@ -124,8 +124,8 @@ class ActiveLearner:
                 # features = np.concatenate((features, cur_features)) if features is not None else cur_features
                 f_labels = np.concatenate((f_labels, labels.cpu())) if f_labels is not None else labels.cpu()
 
-                soft = nn.functional.softmax(outputs, dim=1)
-                results += (list(zip(list(soft.cpu().numpy()), labels.cpu().numpy())))
+                probabilities = nn.functional.softmax(outputs, dim=1)
+                results += (list(zip(list(probabilities.cpu().numpy()), labels.cpu().numpy())))
                 # print(results)
                 # log_message(f'{soft.numpy()}', LoggingLevel.WARNING)
                 # the label with the highest energy will be our prediction
@@ -230,7 +230,7 @@ class ActiveLearner:
         indices = self._supervisor_labeling_strategy.query_data(results=results)
         image_paths = [saved_image_paths[i] for i in indices]
         # We also have to remove all the duplicates in the list
-        image_paths = list(set(image_paths))
+        # image_paths = list(set(image_paths))
         if create_popup:
             # Create the pop-up gui for labelling the images, moving them into the correct location.
             labelling_window = DataLabellingWindow(self._class_list,
