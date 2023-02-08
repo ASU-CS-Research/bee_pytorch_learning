@@ -149,6 +149,9 @@ class ActiveLearner:
         # session.
         self._labeled_images = self._load_labeled_images()
         self._unlabeled_images = self._load_unlabeled_images()
+        self._unlabeled_set = torch.utils.data.DataLoader(
+            self._unlabeled_images, batch_size=self._batch_size, shuffle=True
+        )
 
         self._evaluated_unlabeled = None
         self._supervisor_labeling_idx = 0
