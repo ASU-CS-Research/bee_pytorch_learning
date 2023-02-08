@@ -145,6 +145,11 @@ class ActiveLearner:
         our image data training set and do backward propagation based on the given labels. At the end of each epoch, we
         check the validation score and save the
         """
+        # First, make sure all the labeled and unlabeled images are loaded in correctly at the start of each training
+        # session.
+        self._labeled_images = self._load_labeled_images()
+        self._unlabeled_images = self._load_unlabeled_images()
+
         self._evaluated_unlabeled = None
         self._supervisor_labeling_idx = 0
 

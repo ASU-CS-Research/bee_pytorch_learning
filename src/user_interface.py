@@ -57,6 +57,7 @@ layouts[1] = [
                   autoscroll=True,
                   auto_refresh=True,
                   echo_stdout_stderr=True,
+                  font=("Andale Mono", 17),
                   key='output_box')]
 ]
 
